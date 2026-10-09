@@ -1,0 +1,9 @@
+# Firmware dumps — may contain credentials/device secrets
+*.bin
+dumps/
+
+# ESPHome
+secrets.yaml
+.esphome/
+
+.DS_Store
