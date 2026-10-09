@@ -1,18 +1,15 @@
-# Feniska
+# Feniska Base → ESPHome
 
-Reviving two **Feniska** smart cat-toilet scale bases after the company behind them (a Berlin pet-tech startup) shut down. The original firmware only talked to Feniska's AWS cloud, so the bases went dead with it. This project reflashes them with [ESPHome](https://esphome.io) so they become local weight sensors for Home Assistant, with no cloud involved.
+Revives the **Feniska** smart cat-toilet scale base after the Berlin pet-tech startup behind it shut down. The original firmware only talked to Feniska's AWS cloud, so the bases stopped working when the cloud did. This project reflashes them with [ESPHome](https://esphome.io) so they become local weight sensors for Home Assistant, with no cloud involved.
 
-**Project hub (Notion):** https://app.notion.com/p/3f4c5d5fe196816b83dfd5d20fb827d6. It has the plan, device facts and current status.
+## What you get
 
-## Status
+- Weight in kg, using the original firmware's filtering and sending rules (more than 20 g change, then once 10 s later, then every 3 min), plus a live value about once per second
+- The weight shown on the built-in display, as before
+- Tare, restart and backlight controls in Home Assistant and through a local web API
+- The original calibration math, with a simple procedure to recalibrate
 
-| | Base #1 | Base #2 |
-|---|---|---|
-| Firmware backup | ✅ verified (2× identical dumps) | — |
-| ESPHome | ✅ flashed over USB, calibrated | ⏳ not started |
-| Home Assistant | ⏳ | ⏳ |
-
-Cat-visit detection is still to do. The original device only sent raw weights; recognising visits happened in Feniska's cloud.
+Cat-visit detection isn't included. The original device only sent raw weights; recognising visits happened in Feniska's cloud. Build it as a Home Assistant automation on top of the live weight.
 
 ## Hardware
 
@@ -29,21 +26,29 @@ Cat-visit detection is still to do. The original device only sent raw weights; r
 ## Repository layout
 
 ```
-AGENTS.md                      instructions for AI agents (start at the Notion hub)
 re/
-  feniska-base.esphome.yaml    ESPHome config for the bases
+  feniska-base.esphome.yaml    ESPHome config
   FINDINGS.md                  reverse-engineering results for the original firmware v16
   esp2elf.py                   wraps an ESP32 app image into an ELF for Ghidra
   scripts/                     Ghidra headless scripts + helpers
   out/, out2/                  decompiled functions / disassembly used as evidence
-dumps/                         original flash dumps (git-ignored)
 ```
 
 ## Usage
 
 The steps below assume [uv](https://docs.astral.sh/uv/) is installed. ESPHome runs through `uvx`, so nothing gets installed globally.
 
-### Secrets
+### 1. Back up the original firmware
+
+Open the base and connect the T-Display with a USB-C **data** cable. Then make a full flash dump; it can be written back later.
+
+```bash
+uvx --from esptool esptool --port /dev/cu.usbserial-XXXX read-flash 0 ALL feniska-original.bin
+```
+
+Make a second dump and compare the hashes before going further. The dump contains the base's stored data (NVS): device UUID, factory calibration and Wi-Fi credentials. Keep it private.
+
+### 2. Secrets
 
 Create `re/secrets.yaml` (it's git-ignored):
 
@@ -55,7 +60,7 @@ feniska_ota_password: "..."
 feniska_ap_password: "..."    # fallback hotspot, min. 8 chars
 ```
 
-### Build and flash
+### 3. Build and flash
 
 ```bash
 cd re
@@ -65,7 +70,11 @@ uvx esphome upload feniska-base.esphome.yaml --device feniska-base.local       #
 uvx esphome logs feniska-base.esphome.yaml --device /dev/cu.usbserial-XXXX
 ```
 
-Both bases currently share the device name `feniska-base`. Give base #2 its own `name` substitution before flashing it.
+If you have more than one base, give each a unique `name` substitution in the YAML.
+
+### 4. Add to Home Assistant
+
+Home Assistant normally discovers the device on its own: **Settings → Devices & services → Discovered**. If it doesn't, use **Add integration → ESPHome** with host `feniska-base.local` and port `6053`. Enter the `feniska_api_key` when asked.
 
 ### Tare and read
 
@@ -80,46 +89,43 @@ Entity names in these URLs are case-sensitive, and the POST needs a body. You ca
 
 ### Calibration
 
-`calib_fac` in the YAML is the number of raw counts per gram. To recalibrate, read the raw HX711 values (`uvx esphome logs …`) with the base empty and again with a known weight on it, then use:
+`calib_fac` in the YAML is the number of raw counts per gram. Every base stores its own factory value in NVS (`feniska/calibFac`); you can read it from your dump, or recalibrate. To recalibrate, read the raw HX711 values (`uvx esphome logs …`) with the base empty and again with a known weight on it, then use:
 
 ```
 calib_fac = (raw_loaded − raw_empty) / reference_grams
 ```
 
-Base #1 measured **24.1221** with a 1320.7 g reference. The factory value from NVS was 23.7618. Readings vary by about 2–3 % depending on where the load sits on the four corner cells.
+On the unit used to develop this, the factory value was 23.76 and recalibration gave 24.12, a 1.5 % difference. Readings vary by about 2–3 % depending on where the load sits on the four corner cells. That's fine for telling cats apart.
 
-## Flashing a base that still runs the original firmware
+## Flashing over Wi-Fi without opening the case
 
-- **Over USB (recommended):** connect a USB-C *data* cable to the T-Display. Back up first:
-  ```bash
-  python -m esptool --port PORT read-flash 0 ALL dumps/feniska-baseN-original.bin
-  ```
-  Then flash with `esphome upload` as above.
-- **Over Wi-Fi without opening the case:** the original firmware installs any image it's pointed at, with no signature check:
-  ```
-  GET http://<base-ip>/update?deviceuuid=<devUuid>&url=http://<host>/firmware.ota.bin
-  ```
-  The server must use plain http and send `Content-Type: application/octet-stream` and a `Content-Length`. The image must be smaller than 1,310,720 bytes; ESPHome's `firmware.ota.bin` is about 0.95 MB. You need the base's own `devUuid`, which is stored only in that base's NVS. Details are in [`re/FINDINGS.md`](re/FINDINGS.md) §5.
+The original firmware installs any image it's pointed at, with no signature check:
+
+```
+GET http://<base-ip>/update?deviceuuid=<devUuid>&url=http://<host>/firmware.ota.bin
+```
+
+- The server must use plain http and send `Content-Type: application/octet-stream` and a `Content-Length`.
+- The image must be smaller than 1,310,720 bytes. ESPHome's `firmware.ota.bin` is about 0.95 MB.
+- You need the base's own `devUuid`, which is stored only in that base's NVS. It may also be on a sticker under the base or in the old Feniska app.
+- USB stays the safer route. Details are in [`re/FINDINGS.md`](re/FINDINGS.md) §5.
 
 ## Restoring the original firmware
 
 ```bash
-python -m esptool --port PORT write-flash 0 dumps/feniska-base1-original-1.bin
+uvx --from esptool esptool --port /dev/cu.usbserial-XXXX write-flash 0 feniska-original.bin
 ```
-
-The dump includes NVS: device UUID, calibration and Wi-Fi. Its SHA-256 is `941e94b11eeadd270f0ebcaf4497229dd3f32446c45b19dcdca443ba97a17489`.
 
 ## Reverse engineering
 
-The original firmware (Arduino-ESP32, PlatformIO, July 2022) was decompiled with Ghidra 12 (Xtensa). To reproduce:
+The original firmware (v16: Arduino-ESP32, PlatformIO, July 2022) was decompiled with Ghidra 12 (Xtensa). Results, including the function map, measurement logic, MQTT protocol, HTTP routes and the OTA path, are in [`re/FINDINGS.md`](re/FINDINGS.md). To reproduce:
 
 ```bash
 brew install ghidra
-python re/esp2elf.py dumps/app0.bin re/app0.elf
+dd if=feniska-original.bin of=app0.bin bs=4096 skip=16 count=320   # app0 partition: 0x10000, 0x140000
+python re/esp2elf.py app0.bin re/app0.elf
 export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home
 $(brew --prefix ghidra)/libexec/support/analyzeHeadless re/proj feniska \
   -import re/app0.elf -processor "Xtensa:LE:32:default" \
   -scriptPath "$PWD/re/scripts" -postScript DumpByStrings.java "$PWD/re/out" "init and start HX711 scale"
 ```
-
-`dumps/app0.bin` is the `app0` partition: offset `0x10000`, size `0x140000`. Results, including the function map, measurement logic, MQTT protocol and HTTP routes, are in [`re/FINDINGS.md`](re/FINDINGS.md).
