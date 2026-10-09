@@ -1,0 +1,27 @@
+# Copy to cats.local.toml (git-ignored) and adjust.
+
+# Home Assistant URL and a file holding a long-lived access token
+# (HA profile -> Security -> Long-lived access tokens). Keep the file private (chmod 600).
+ha_url = "http://homeassistant.local:8123"
+token_file = "~/.config/feniska/ha_token"
+
+# Optional: name (or part of the name) of the ESPHome device in HA, if you have more than one base.
+# base_device = "Feniska Base"
+
+# Visit assignment: nearest reference weight wins.
+match_kg = 1.5     # a visit farther than this from every cat counts as "Unknown"
+learn_kg = 0.5     # only learn a reference weight from visits closer than this
+learn_rate = 0.2   # how far one confident visit moves the reference (0..1)
+
+# Dashboard
+dashboard_url = "dashboard-cats"
+dashboard_title = "Cats"
+
+# One entry per cat. weight = rough current weight in kg (used as the starting reference).
+[[cats]]
+name = "Cat A"
+weight = 3.5
+
+[[cats]]
+name = "Cat B"
+weight = 5.0

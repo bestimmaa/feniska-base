@@ -16,3 +16,8 @@ re/app0.elf
 
 # Per-unit overrides (calibration etc.)
 *.local.yaml
+
+# Household-specific Home Assistant setup
+homeassistant/*.local.*
+
+__pycache__/

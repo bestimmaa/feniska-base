@@ -16,7 +16,7 @@ curl -s http://feniska-base.local/sensor/Last%20Visit%20Weight
 curl -s http://feniska-base.local/text_sensor/Last%20Visit%20Time
 ```
 
-Telling cats apart by weight is left to Home Assistant.
+- Optional [Home Assistant setup](#home-assistant-cat-identification) that tells cats apart by weight, tracks each cat's weight over time and adds a "Cats" dashboard.
 
 ## Hardware
 
@@ -39,6 +39,10 @@ re/
   esp2elf.py                   wraps an ESP32 app image into an ELF for Ghidra
   scripts/                     Ghidra headless scripts + helpers
   out/, out2/                  decompiled functions / disassembly used as evidence
+homeassistant/
+  setup_ha.py                  creates cat identification + "Cats" dashboard via the HA API
+  cats.example.toml            config template (copy to cats.local.toml)
+  recent.py, set_weights.py    show recent activity / set reference weights
 ```
 
 ## Usage
@@ -113,6 +117,43 @@ substitutions:
 ```
 
 On the unit used to develop this, the factory value was 23.76 and recalibration gave 24.12, a 1.5 % difference. Readings vary by about 2–3 % depending on where the load sits on the four corner cells. That's fine for telling cats apart.
+
+## Home Assistant: cat identification
+
+`homeassistant/setup_ha.py` builds on the base's visit sensors and sets up the rest through the Home Assistant API. It needs no YAML files and no add-ons, just a long-lived access token.
+
+**What it creates**
+
+| Entity | Purpose |
+|---|---|
+| `input_number.<cat>_reference_weight` | the cat's expected weight; adjusts itself slowly from confident matches |
+| `input_number.<cat>_last_weight`, `sensor.<cat>_weight` | weight from the cat's last visit; the sensor keeps long-term statistics for weight trends |
+| `counter.<cat>_visits_today`, `counter.unknown_litter_visits_today` | daily visit counts, reset at midnight |
+| `input_select.litter_box_last_cat` | which cat used the box last; its history doubles as a visit log |
+| automation *Litter box - identify cat and count visit* | assigns each visit to the cat with the nearest reference weight, or *Unknown* if it's more than `match_kg` away from every cat |
+| dashboard *Cats* | weight and visit tiles per cat, last visit, 30-day weight trend, visit history, litter box weight, calibration and base controls |
+
+**Setup**
+
+1. Flash the ESPHome config and adopt the base in Home Assistant (see above).
+2. Create a long-lived access token: HA profile → *Security* → *Long-lived access tokens*. Copy it, then save it to a private file:
+   ```bash
+   mkdir -p ~/.config/feniska && pbpaste > ~/.config/feniska/ha_token && chmod 600 ~/.config/feniska/ha_token
+   ```
+   `pbpaste` is macOS; on Linux, use `xclip -o` or paste into an editor.
+3. Copy `homeassistant/cats.example.toml` to `homeassistant/cats.local.toml` (it's git-ignored). Set your HA URL and list your cats with rough current weights.
+4. Run it. It's safe to re-run: existing helpers and learned weights are kept, and the automations and dashboard are rewritten.
+   ```bash
+   cd homeassistant
+   uvx --with websockets python setup_ha.py
+   ```
+
+The script finds the base's entities on its own, even when HA adds the area name to the entity IDs. If you have several bases, set `base_device` in the config.
+
+**Tips**
+- With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.
+- Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
+- `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
 
 ## Flashing over Wi-Fi without opening the case
 
