@@ -1,0 +1,123 @@
+==== 400d5190 - 400d52ee
+400d5190  entry a1,0x50
+400d5193  l32r a3,0x400d02a8  ; [400d02a8]=0xbf800000 (-1.00000)
+400d5196  movi.n a2,0x0
+400d5198  s32i.n a3,a1,0x8
+400d519a  s32i.n a3,a1,0xc
+400d519c  l32r a3,0x400d026c  ; [400d026c]=0x3ffc4fdc (1.97119)
+400d519f  movi.n a12,0x0
+400d51a1  l32i.n a10,a3,0x0
+400d51a3  addi a11,a1,0x18
+400d51a6  mov a1,a1
+400d51a9  call8 0x4008f1f4  ; -> FUN_4008f1f4
+400d51ac  bnei a10,0x1,0x400d51ed
+400d51af  mov a1,a1
+400d51b2  call8 0x400d5a70  ; -> FUN_400d5a70
+400d51b5  l32i.n a4,a1,0x18
+400d51b7  sub a10,a10,a4
+400d51ba  movi a4,0x78
+400d51bd  bgeu a4,a10,0x400d51ed
+400d51c0  movi a10,0x60
+400d51c3  l32r a8,0x400d02c0  ; [400d02c0]=0x401689c4 (2.35216)
+400d51c6  callx8 a8  ; -> FUN_401689c4
+400d51c9  mov.n a4,a10
+400d51cb  mov a1,a1
+400d51ce  call8 0x400db358  ; -> FUN_400db358
+400d51d1  mov.n a10,a4
+400d51d3  mov a1,a1
+400d51d6  call8 0x400d3ae8  ; -> FUN_400d3ae8
+400d51d9  l32r a8,0x400d0100  ; [400d0100]=0x3ffc50e0 (1.97122)
+400d51dc  l32r a12,0x400d01b4  ; [400d01b4]=0x000022b3 (1.24477e-41)
+400d51df  l32r a11,0x400d02ac  ; [400d02ac]=0x3f407f1a (0.751939) "aunev1aoh3apb-ats.iot.eu-central-1.amazonaws.com"
+400d51e2  l32r a10,0x400d00fc  ; [400d00fc]=0x3ffc5000 (1.97119)
+400d51e5  s32i.n a4,a8,0x0
+400d51e7  mov a1,a1
+400d51ea  call8 0x400e5e00  ; -> FUN_400e5e00
+400d51ed  l32r a4,0x400d02b0  ; [400d02b0]=0x3ffc57c8 (1.97143)
+400d51f0  movi a11,0xa
+400d51f3  mov a10,a4
+400d51f6  mov a1,a1
+400d51f9  call8 0x400d810c  ; -> FUN_400d810c
+400d51fc  l32r a11,0x400d00bc  ; [400d00bc]=0x447a0000 (1000.00)
+400d51ff  l32r a8,0x400d00d0  ; [400d00d0]=0x401892b0 (2.38395)
+400d5202  callx8 a8  ; -> FUN_401892b0
+400d5205  l32r a5,0x400d02b4  ; [400d02b4]=0x3c23d70a (0.0100000)
+400d5208  wfr f1,a10
+400d520b  abs.s f0,f1
+400d520e  wfr f2,a5
+400d5211  s32i a10,a1,0x4
+400d5214  olt.s b0,f0,f2
+400d5217  bf b0,0x400d5229
+400d521a  mov a1,a1
+400d521d  call8 0x400d5ac4  ; -> FUN_400d5ac4
+400d5220  wfr f0,a10
+400d5223  trunc.s a10,f0,0x0
+400d5226  s32i a10,a4,0x4
+400d5229  mov a1,a1
+400d522c  call8 0x400eac04  ; -> FUN_400eac04
+400d522f  lsi f1,a1,0x4
+400d5232  lsi f2,a1,0xc
+400d5235  sub a10,a10,a2
+400d5238  sub.s f0,f1,f2
+400d523b  ufloat.s f1,a10,0x0
+400d523e  l32r a12,0x400d0120  ; [400d0120]=0x00000000 (0.00000)
+400d5241  rfr a11,f1
+400d5244  abs.s f0,f0
+400d5247  rfr a10,f0
+400d524a  mov a1,a1
+400d524d  call8 0x400d50c0  ; -> FUN_400d50c0
+400d5250  beqz.n a10,0x400d528a
+400d5252  mov a1,a1
+400d5255  call8 0x400d5a70  ; -> FUN_400d5a70
+400d5258  lsi f2,a1,0x4
+400d525b  s32i.n a10,a1,0x24
+400d525d  rfr a10,f2
+400d5260  ssi f2,a1,0x28
+400d5263  mov a1,a1
+400d5266  call8 0x400d5ac4  ; -> FUN_400d5ac4
+400d5269  s32i.n a10,a1,0x2c
+400d526b  l32i a10,a3,0x0
+400d526e  movi a13,0x0
+400d5271  movi.n a12,0xff
+400d5273  addi a11,a1,0x24
+400d5276  mov a1,a1
+400d5279  call8 0x4008eab8  ; -> FUN_4008eab8
+400d527c  mov a1,a1
+400d527f  call8 0x400eac04  ; -> FUN_400eac04
+400d5282  lsi f0,a1,0x4
+400d5285  mov.n a2,a10
+400d5287  ssi f0,a1,0xc
+400d528a  l32i.n a10,a1,0x4
+400d528c  mov a1,a1
+400d528f  call8 0x400d4ea4  ; -> FUN_400d4ea4
+400d5292  lsi f2,a1,0x8
+400d5295  wfr f0,a10
+400d5298  sub.s f1,f0,f2
+400d529b  ssi f0,a1,0x0
+400d529e  abs.s f1,f1
+400d52a1  rfr a10,f1
+400d52a4  l32r a8,0x400d00d4  ; [400d00d4]=0x40002c34 (2.00270)
+400d52a7  callx8 a8
+400d52aa  l32r a12,0x400d0258  ; [400d0258]=0x9999999a (-1.58819e-23)
+400d52ad  l32r a13,0x400d0260  ; [400d0260]=0x3fa99999 (1.32500)
+400d52b0  l32r a8,0x400d0144  ; [400d0144]=0x400636dc (2.09710)
+400d52b3  callx8 a8
+400d52b6  lsi f0,a1,0x0
+400d52b9  blti a10,0x1,0x400d52d7
+400d52bc  l32r a3,0x400d02b8  ; [400d02b8]=0x3ffc4fa8 (1.97118)
+400d52bf  l32r a10,0x400d01b0  ; [400d01b0]=0x3ffc55c8 (1.97137)
+400d52c2  ssi f0,a3,0x0
+400d52c5  rfr a11,f0
+400d52c8  ssi f0,a1,0x0
+400d52cb  mov a1,a1
+400d52ce  call8 0x400d34e8  ; -> FUN_400d34e8
+400d52d1  lsi f0,a1,0x0
+400d52d4  ssi f0,a1,0x8
+400d52d7  movi a10,0x32
+400d52da  mov a1,a1
+400d52dd  call8 0x4009084c  ; -> FUN_4009084c
+400d52e0  l32r a11,0x400d02bc  ; [400d02bc]=0x3f4279a4 (0.759669)
+400d52e3  l32r a10,0x400d00cc  ; [400d00cc]=0x3ffc5ad4 (1.97152)
+400d52e6  mov a1,a1
+400d52e9  call8 0x400e9514  ; -> FUN_400e9514
+400d52ec  j 0x400d519c

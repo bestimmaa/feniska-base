@@ -7,3 +7,9 @@ secrets.yaml
 .esphome/
 
 .DS_Store
+.venv/
+
+# Ghidra project + logs (regenerable)
+re/proj/
+re/*.log
+re/app0.elf

@@ -1,0 +1,35 @@
+==== calls to 400e4384
+400d5416 in FUN_400d5300 : [addi a10,a1,0x14, mov.n a11,a5, l32i.n a12,a1,0xc]
+==== calls to 400e418c
+400d5405 in FUN_400d5300 : [addi a10,a1,0x14, mov a11,a3, mov.n a12,a4]
+==== calls to 400e4640
+400d533a in FUN_400d5300 : [addi a10,a1,0x14, mov.n a11,a5, l32r a12,0x400d0120]
+400e4714 in FUN_400e46c4 : [addi a10,a1,0x14, l32r a11,0x400d1060, l32r a12,0x400d0120]
+==== calls to 400e43c0
+400d534d in FUN_400d5300 : [addi a10,a1,0x14, mov a11,a3, movi.n a12,0x0]
+400e4725 in FUN_400e46c4 : [addi a10,a1,0x14, movi a12,0x0, l32r a11,0x400d1064]
+==== calls to 4008fa64
+40091704 in FUN_400916d8 : [s32i a13,a1,0x0, l32r a10,0x400811f0, l32r a11,0x400811ec, movi.n a14,0x1, mov a15,a13, l32r a12,0x400811e8]
+400eabf5 in FUN_400eabdc : [mov.n a14,a6, mov.n a13,a5, mov.n a12,a4, mov.n a11,a3, mov a10,a2, mov a15,a7]
+400d74f1 in FUN_400d7140 : [mov.n a12,a4, mov.n a14,a13, mov.n a15,a3, s32i.n a13,a1,0x0, l32r a10,0x400d053c, l32r a11,0x400d0538]
+400d7532 in FUN_400d7140 : [mov.n a12,a4, mov.n a14,a13, mov.n a15,a3, s32i.n a13,a1,0x0, l32r a10,0x400d0548, l32r a11,0x400d0544]
+4018f52d in FUN_4018f434 : [l32r a10,0x401614e8, l32i a12,a2,0xc, l32i.n a14,a2,0x8, mov.n a13,a4, addi.n a15,a4,0x8, beq a11,a8,0x4018f560]
+4011eaf6 in FUN_4011ea78 : [l32r a10,0x4011009c, add.n a15,a15,a2, addi a11,a1,0x1d, movi a12,0x400, mov.n a13,a3]
+40112cfa in FUN_40112ce0 : [mov.n a10,a3, mov.n a12,a5, mov.n a13,a4, mov.n a14,a6, addi a15,a1,0x1c, mov.n a11,a2]
+400fee56 in FUN_400fee3c : [mov.n a10,a2, mov.n a11,a3, mov.n a12,a4, mov.n a13,a5, mov.n a14,a6, mov.n a15,a7]
+4011d06d in FUN_4011ce50 : [s32i.n a13,a1,0x0, l32r a10,0x4010ff3c, l32r a11,0x4010ff38, l32r a12,0x4010ff34, movi a14,0x1, mov a15,a6]
+400fee81 in FUN_400fee60 : [mov a14,a6, mov a13,a5, mov.n a12,a4, mov.n a11,a3, mov.n a10,a2, mov.n a15,a7]
+4011e3ed in FUN_4011e200 : [l32r a10,0x4010fff8, l32r a11,0x4010fff4, l32r a12,0x4010ff34, movi.n a13,0x1, mov.n a14,a2, mov.n a15,a2]
+400fe5f6 in FUN_400fe558 : [l32r a10,0x400d22f0, l32r a11,0x400d22ec, l32r a12,0x400d08cc]
+401172de in FUN_401172bc : [s32i.n a13,a1,0x0, l32r a10,0x4010fc70, l32r a11,0x4010fc6c, l32r a12,0x4010fc68, movi.n a14,0x16, mov.n a15,a2]
+==== calls to 40090540
+400d6522 in FUN_400d64b0 : [l32i.n a10,a7,0x0]
+400d652e in FUN_400d64b0 : [l32i a10,a6,0x0]
+400d7519 in FUN_400d7140 : [l32i.n a10,a3,0x0]
+400d753a in FUN_400d7140 : [l32i.n a10,a3,0x0]
+4018f74e in ? : [movi.n a10,0x0]
+==== calls to 4008fad4
+400d6597 in FUN_400d64b0 : [l32i.n a10,a7,0x0]
+400d659f in FUN_400d64b0 : [l32i.n a10,a6,0x0]
+400d7ac6 in FUN_400d7950 : [l32i a10,a6,0x0]
+400d7ad2 in FUN_400d7950 : [l32i a10,a6,0x0]

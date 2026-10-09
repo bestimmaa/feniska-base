@@ -1,0 +1,236 @@
+# Feniska Base (LILYGO TTGO T-Display V1.1 + HX711) -> ESPHome draft
+# Derived from reverse-engineering the original firmware v16 (see re/FINDINGS.md).
+# CONFIRMED = seen in original firmware code; INFERRED/UNCONFIRMED = check on hardware.
+#
+# Flash-size note: the device's partition table has two 1.25 MB app slots (0x140000).
+# If you OTA this via the original firmware's /update endpoint, the ESPHome
+# firmware.ota.bin MUST be < 1,310,720 bytes. esp-idf framework keeps the image small.
+
+substitutions:
+  name: feniska-base
+  friendly_name: Feniska Base
+  # From NVS of the original device (CONFIRMED values, counts per gram / raw zero):
+  calib_fac: "23.7618"     # NVS feniska/calibFac  (raw counts per gram)
+  calib_off: "434380"      # NVS feniska/calibOff  (factory empty-base raw; original re-tares at boot anyway)
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev          # TTGO T-Display V1.1, ESP32-D0WDQ6-V3
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret feniska_api_key
+
+ota:
+  - platform: esphome
+    password: !secret feniska_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Feniska-Base Fallback"
+    password: !secret feniska_ap_password
+
+captive_portal:
+
+globals:
+  - id: zero_offset          # HX711 offset (raw counts). Original keeps it in RAM only.
+    type: float
+    restore_value: false
+    initial_value: ${calib_off}
+  - id: tare_pending         # original firmware tares at every boot (read_average(10) after 300 ms)
+    type: bool
+    restore_value: false
+    initial_value: "true"
+
+spi:
+  clk_pin: GPIO18            # INFERRED (standard T-Display; TFT_eSPI SPI.begin)
+  mosi_pin: GPIO19           # INFERRED (standard T-Display)
+
+output:
+  - platform: ledc           # CONFIRMED: ledcSetup(ch1, 12000 Hz, 8 bit), ledcAttachPin(GPIO4)
+    id: backlight_pwm
+    pin: GPIO4
+    frequency: 12000Hz
+
+light:
+  - platform: monochromatic
+    name: "Display Backlight"
+    output: backlight_pwm
+    restore_mode: RESTORE_DEFAULT_ON   # original: full brightness (255) at boot
+    default_transition_length: 0s
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 44
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 18
+
+display:
+  # ST7789 135x240. CONFIRMED pins: CS=5, DC=16, RST=23, BL=4 (BL driven by the ledc light above).
+  # mipi_spi's T-DISPLAY preset already knows the panel offsets. If your ESPHome version
+  # complains that GPIO4 is used twice (preset backlight vs. ledc), drop the light/output
+  # above and let the preset drive the backlight (or vice versa).
+  - platform: mipi_spi
+    model: T-DISPLAY
+    id: tft
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    reset_pin: GPIO23
+    rotation: 90             # original: TFT_eSPI setRotation(1) = landscape 240x135
+    update_interval: 1s
+    lambda: |-
+      // Original: weight >= 0.1 kg -> big "x.xx" + "kg"; else idle screen. Values in
+      // (-0.05, 0.05) or negative are shown as 0.
+      float kg = id(weight_display).state;
+      if (!std::isnan(kg) && kg >= 0.1f) {
+        it.printf(15, 40, id(font_big), "%.2f", kg);
+        it.print(170, 60, id(font_small), "kg");
+      } else {
+        it.print(15, 40, id(font_small), "Feniska Base");
+        it.printf(15, 70, id(font_small), "WiFi: %s", id(wifi_ip).state.c_str());
+      }
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: wifi_ip
+      internal: true
+
+sensor:
+  - platform: hx711
+    id: hx_raw
+    name: "HX711 Raw"
+    internal: true
+    dout_pin:
+      number: GPIO15         # CONFIRMED: HX711::begin(dataPin=15, clockPin=2)  (NOT 32/33!)
+      ignore_strapping_warning: true
+    clk_pin:
+      number: GPIO2          # CONFIRMED
+      ignore_strapping_warning: true
+    gain: 128                # CONFIRMED (channel A, never changed)
+    # Original: get_units(10) in MEDAVG mode (10 reads, average of middle 4) + 50 ms delay,
+    # i.e. ~1 value/s at 10 SPS. ESPHome's hx711 does not wait for DOUT, so poll a bit
+    # slower than the conversion rate (RATE pin of the board is UNCONFIRMED: 10 or 80 SPS).
+    update_interval: 200ms
+    filters:
+      - median:
+          window_size: 5
+          send_every: 5
+          send_first_at: 5
+    on_value:
+      then:
+        - lambda: |-
+            const float calib_fac = ${calib_fac};   // counts per gram (sign +: raw rises with load)
+            if (id(tare_pending)) {                  // boot / manual tare (original: RAM only)
+              id(zero_offset) = x;
+              id(tare_pending) = false;
+            }
+            float kg = (x - id(zero_offset)) / calib_fac / 1000.0f;  // CONFIRMED formula
+            // Original zero tracking: |w| < 10 g -> offset = current raw.
+            if (fabsf(kg) < 0.01f) id(zero_offset) = x;
+            id(weight).publish_state(kg);
+            // Display clamp (original FUN_400d4ea4): (-0.05,0.05) or negative -> 0.
+            float disp = (kg < 0.05f) ? 0.0f : kg;
+            if (std::isnan(id(weight_display).state) || fabsf(disp - id(weight_display).state) > 0.05f)
+              id(weight_display).publish_state(disp);
+            // Original upload decision (FUN_400d50c0): change > 20 g -> send now; 10 s after
+            // the last change one settled value; then a heartbeat every 180 s.
+            static float last_sent = -1.0f;
+            static uint32_t last_ms = 0;
+            static int state = 0;
+            uint32_t now = millis();
+            uint32_t dt = now - last_ms;
+            bool push = false;
+            if (fabsf(kg - last_sent) > 0.02f) { state = 0; push = true; }
+            else if (state == 0 && dt > 10000) { state = 1; push = true; }
+            else if (state >= 1 && dt > 180000) { state = 2; push = true; }
+            if (push) {
+              last_sent = kg; last_ms = now;
+              id(weight_reported).publish_state(kg);
+              id(raw_reported).publish_state(id(zero_offset) + kg * 1000.0f * calib_fac);
+            }
+
+  - platform: template
+    id: weight
+    name: "Weight (live)"
+    unit_of_measurement: kg
+    accuracy_decimals: 3
+    device_class: weight
+    state_class: measurement
+    # Live value about once a second. Throttle it if HA history gets too busy:
+    filters:
+      - throttle: 1s
+
+  - platform: template
+    id: weight_reported
+    name: "Weight"
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    state_class: measurement
+    # Same cadence as the original cloud upload (event-driven + 3 min heartbeat).
+
+  - platform: template
+    id: raw_reported
+    name: "Raw Value"        # equivalent of the original JSON "rawValue"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+
+  - platform: template
+    id: weight_display
+    internal: true
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+binary_sensor:
+  # CONFIRMED: the original uses exactly one button, GPIO35 (double click 300 ms = display
+  # demo; long press 5 s = wipe Wi-Fi + restart). GPIO35 is input-only with an external
+  # pull-up on the T-Display, active low.
+  - platform: gpio
+    id: btn_right
+    name: "Button"
+    pin:
+      number: GPIO35
+      inverted: true
+    filters:
+      - delayed_on_off: 20ms   # original debounce 20 ms
+    on_multi_click:
+      - timing:                # double click -> tare (NOT original; original showed a demo)
+          - ON for at most 0.5s
+          - OFF for at most 0.3s
+          - ON for at most 0.5s
+          - OFF for at least 0.2s
+        then:
+          - button.press: tare_button
+      - timing:                # long press 5 s -> restart (original: wipe Wi-Fi creds + restart)
+          - ON for at least 5s
+        then:
+          - button.press: restart_button
+  # GPIO0 (left/BOOT button) is unused by the original firmware. Optional extra:
+  # - platform: gpio
+  #   name: "Button Left"
+  #   pin: { number: GPIO0, inverted: true, mode: { input: true, pullup: true } }
+
+button:
+  - platform: template
+    id: tare_button
+    name: "Tare"
+    on_press:
+      - lambda: id(tare_pending) = true;   # original /tare and MQTT "tare": RAM-only re-zero
+  - platform: restart
+    id: restart_button
+    name: "Restart"

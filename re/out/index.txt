@@ -1,0 +1,27 @@
+init and start HX711 scale -> FUN_400d7140 @ 400d7140
+calibFac: -> FUN_400d7140 @ 400d7140
+calibFac: -> FUN_400e46c4 @ 400e46c4
+calibOff:  -> FUN_400d7140 @ 400d7140
+calibOff:  -> FUN_400e46c4 @ 400e46c4
+Zeroing the base -> FUN_400d6188 @ 400d6188
+Zeroing the base -> FUN_400d7140 @ 400d7140
+Zeroing the base @ 400d7838 (no function)
+tare triggered @ 400d7829 (no function)
+HANDLE OTA -> FUN_400d64b0 @ 400d64b0
+update starting -> FUN_400d64b0 @ 400d64b0
+device uuid is wrong. -> FUN_400d5fd8 @ 400d5fd8
+device uuid is wrong. -> FUN_400d6138 @ 400d6138
+device uuid is wrong. -> FUN_400d6188 @ 400d6188
+device uuid is wrong. -> FUN_400d64b0 @ 400d64b0
+Update Attempt:  -> FUN_400d664c @ 400d664c
+ double pressed --> show Display Demo -> FUN_400d5510 @ 400d5510
+NOT FOUND:  long pressed.
+Worker knows measure: (Available queue space was  @ 400d4f3c (no function)
+Retrying Scale transmission... @ 400d5049 (no function)
+measureAndDisplayTask -> FUN_400d7140 @ 400d7140
+sendMeasurementsTask -> FUN_400d7140 @ 400d7140
+Starting up Feniska Base V -> FUN_400d7140 @ 400d7140
+rawValue -> FUN_400d4930 @ 400d4930
+Dim Brightness to:  @ 400d788f (no function)
+/update -> FUN_400d61e0 @ 400d61e0
+/tare -> FUN_400d61e0 @ 400d61e0
