@@ -9,7 +9,14 @@ Revives the **Feniska** smart cat-toilet scale base after the Berlin pet-tech st
 - Tare, restart and backlight controls in Home Assistant and through a local web API
 - The original calibration math, with a simple procedure to recalibrate
 
-Cat-visit detection isn't included. The original device only sent raw weights; recognising visits happened in Feniska's cloud. Build it as a Home Assistant automation on top of the live weight.
+- Basic visit detection on the device (the original left this to Feniska's cloud). Anything heavier than `visit_min_kg` (default 1 kg) for at least 5 s counts as a visit. The base reports **Last Visit Weight** (median weight during the visit, i.e. the cat), **Peak**, **Duration**, **Residue** (weight left behind, measured 20 s after the cat leaves), **Last Visit Time** and **Visits Since Boot**. It also reports **Uptime**, so a restart, which re-tares the scale, can be spotted.
+
+```bash
+curl -s http://feniska-base.local/sensor/Last%20Visit%20Weight
+curl -s http://feniska-base.local/text_sensor/Last%20Visit%20Time
+```
+
+Telling cats apart by weight is left to Home Assistant.
 
 ## Hardware
 
@@ -78,7 +85,7 @@ Home Assistant normally discovers the device on its own: **Settings → Devices 
 
 ### Tare and read
 
-At boot the scale zeroes on whatever is on it, the same as the original firmware. Tare again if it restarted with something on it:
+At boot the scale zeroes on whatever is on it, the same as the original firmware. Tare **with the empty litter box standing on the base**, so readings show only the cat and what it leaves behind. Tare again after cleaning or refilling the litter. Drift under 10 g is zeroed out automatically.
 
 ```bash
 curl -X POST -d '' http://feniska-base.local/button/Tare/press

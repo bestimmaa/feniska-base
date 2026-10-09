@@ -12,6 +12,8 @@ substitutions:
   # EXAMPLE VALUES - replace with your own base's calibration (see README "Calibration").
   # Each base stores its factory values in NVS (namespace "feniska", keys calibFac / calibOff).
   calib_fac: "24.0"        # raw counts per gram; your base's calibFac or a fresh recalibration (typically ~24)
+  # Visit detection: anything heavier than this counts as a cat (a visit).
+  visit_min_kg: "1.0"
   calib_off: "430000"      # raw reading of the empty base; only a start value, the scale re-tares at boot
 
 esphome:
@@ -109,7 +111,14 @@ display:
         it.printf(15, 70, id(font_small), "WiFi: %s", id(wifi_ip).state.c_str());
       }
 
+time:
+  - platform: sntp
+    id: sntp_time
+
 text_sensor:
+  - platform: template
+    id: last_visit_time
+    name: "Last Visit Time"
   - platform: wifi_info
     ip_address:
       id: wifi_ip
@@ -168,6 +177,84 @@ sensor:
               id(weight_reported).publish_state(kg);
               id(raw_reported).publish_state(id(zero_offset) + kg * 1000.0f * calib_fac);
             }
+            // Visit detection (NOT in the original firmware; the cloud did this). A visit
+            // starts after 2 samples above visit_min_kg and ends after 3 samples below it.
+            // The cat's weight is the median of the in-visit samples, which ignores the
+            // spikes of jumping in/out. Residue = weight 20 s after the cat left.
+            static std::vector<float> samples;
+            static int above = 0, below = 0;
+            static bool in_visit = false;
+            static uint32_t visit_start = 0, residue_due = 0;
+            static float baseline = 0.0f, visit_baseline = 0.0f;
+            const float min_kg = ${visit_min_kg};
+            if (kg > min_kg) { above++; below = 0; } else { below++; above = 0; }
+            if (!in_visit && above >= 2) {
+              in_visit = true; visit_start = now; visit_baseline = baseline;
+              samples.clear(); residue_due = 0;
+            }
+            if (in_visit && kg > min_kg && samples.size() < 1800) samples.push_back(kg);
+            if (in_visit && below >= 3) {
+              in_visit = false;
+              uint32_t secs = (now - visit_start) / 1000;
+              if (secs >= 5 && !samples.empty()) {
+                std::vector<float> s = samples;
+                std::sort(s.begin(), s.end());
+                id(last_visit_weight).publish_state(s[s.size() / 2] - visit_baseline);
+                id(last_visit_peak).publish_state(s.back() - visit_baseline);
+                id(last_visit_duration).publish_state(secs);
+                id(visit_count).publish_state(std::isnan(id(visit_count).state) ? 1 : id(visit_count).state + 1);
+                auto t = id(sntp_time).now();
+                id(last_visit_time).publish_state(t.is_valid() ? t.strftime("%Y-%m-%d %H:%M:%S") : "unknown (no time sync)");
+                residue_due = now + 20000;
+              }
+            }
+            if (!in_visit) {
+              if (residue_due != 0 && (int32_t)(now - residue_due) >= 0) {
+                id(last_visit_residue).publish_state(kg - visit_baseline);
+                residue_due = 0;
+              }
+              if (above == 0) baseline = kg;   // pre-visit reference
+            }
+
+  - platform: template
+    id: last_visit_weight
+    name: "Last Visit Weight"
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    state_class: measurement
+
+  - platform: template
+    id: last_visit_peak
+    name: "Last Visit Peak"
+    unit_of_measurement: kg
+    accuracy_decimals: 2
+    device_class: weight
+    entity_category: diagnostic
+
+  - platform: template
+    id: last_visit_duration
+    name: "Last Visit Duration"
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    device_class: duration
+
+  - platform: template
+    id: last_visit_residue
+    name: "Last Visit Residue"
+    unit_of_measurement: kg
+    accuracy_decimals: 3
+    device_class: weight
+
+  - platform: template
+    id: visit_count
+    name: "Visits Since Boot"
+    accuracy_decimals: 0
+    state_class: total_increasing
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
 
   - platform: template
     id: weight
