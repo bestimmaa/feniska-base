@@ -68,7 +68,7 @@ Each loop:
 - Publish retry: up to 10 tries, 4000 ms apart; then retries the same item every 500 ms forever.
 - `connect()` retries every 5 s (recursively).
 - Broker `aunev1aoh3apb-ats.iot.eu-central-1.amazonaws.com:8883`, TLS, QoS 0, retain false.
-- `base/data/<devId>/weight`: `{"devUuid":"..","logdate":"YYYY-MM-DD HH:MM:SS","weight":"1.23","rawValue":"434380.00"}` — string values, 2 decimals, kg, UTC (NTP pool.ntp.org).
+- `base/data/<devId>/weight`: `{"devUuid":"..","logdate":"YYYY-MM-DD HH:MM:SS","weight":"1.23","rawValue":"430000.00"}` — string values, 2 decimals, kg, UTC (NTP pool.ntp.org).
 - `base/data/<devId>/firmwareversion`: `{"deviceId":"<uuid>","logdate":"..","version":"16"}`
 - `base/data/<devId>/meta`: `{"logtime","deviceUuid","rssi","firmware":16,"ip","calibFac"}` — both sent once on coming online.
 - Subscribes to `base/action/<devUuid>`. `devId` / `devUuid` are NVS keys in namespace `feniska`.
@@ -79,7 +79,7 @@ Each loop:
 - Setup: `offset = calibOff`, `scale = 1/calibFac` → kg = (raw − offset) / calibFac / 1000 (positive sign).
 - Boot tare: "Zeroing the base", `delay(300)`, `offset = read_average(10)` — overwrites calibOff in RAM every boot.
 - `/tare` and MQTT `tare`: same, RAM only.
-- Only NVS writes of calibFac/calibOff are in 0x400d5300, which writes back the values just read. **calibFac 23.7618 is the factory calibration that matters.**
+- Only NVS writes of calibFac/calibOff are in 0x400d5300, which writes back the values just read. **The per-unit factory calibFac (typically ~24 counts/g) is the calibration that matters.**
 
 ## 5. HTTP & MQTT actions (CONFIRMED)
 

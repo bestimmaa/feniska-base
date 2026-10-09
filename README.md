@@ -95,6 +95,16 @@ Entity names in these URLs are case-sensitive, and the POST needs a body. You ca
 calib_fac = (raw_loaded − raw_empty) / reference_grams
 ```
 
+The values in `feniska-base.esphome.yaml` are only examples. Put your own base's values in a local override file. `*.local.yaml` is git-ignored, and you build and flash that file instead:
+
+```yaml
+# re/my-base.local.yaml
+packages:
+  base: !include feniska-base.esphome.yaml
+substitutions:
+  calib_fac: "24.12"   # your base's value
+```
+
 On the unit used to develop this, the factory value was 23.76 and recalibration gave 24.12, a 1.5 % difference. Readings vary by about 2–3 % depending on where the load sits on the four corner cells. That's fine for telling cats apart.
 
 ## Flashing over Wi-Fi without opening the case

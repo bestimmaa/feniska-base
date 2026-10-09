@@ -9,9 +9,10 @@
 substitutions:
   name: feniska-base
   friendly_name: Feniska Base
-  # From NVS of the original device (CONFIRMED values, counts per gram / raw zero):
-  calib_fac: "24.1221"     # 2026-10-09 recalibrated with 1320.7 g reference (factory NVS calibFac was 23.7618)
-  calib_off: "434380"      # NVS feniska/calibOff  (factory empty-base raw; original re-tares at boot anyway)
+  # EXAMPLE VALUES - replace with your own base's calibration (see README "Calibration").
+  # Each base stores its factory values in NVS (namespace "feniska", keys calibFac / calibOff).
+  calib_fac: "24.0"        # raw counts per gram; your base's calibFac or a fresh recalibration (typically ~24)
+  calib_off: "430000"      # raw reading of the empty base; only a start value, the scale re-tares at boot
 
 esphome:
   name: ${name}

@@ -13,3 +13,6 @@ secrets.yaml
 re/proj/
 re/*.log
 re/app0.elf
+
+# Per-unit overrides (calibration etc.)
+*.local.yaml
