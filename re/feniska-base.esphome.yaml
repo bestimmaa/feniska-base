@@ -10,7 +10,7 @@ substitutions:
   name: feniska-base
   friendly_name: Feniska Base
   # From NVS of the original device (CONFIRMED values, counts per gram / raw zero):
-  calib_fac: "23.7618"     # NVS feniska/calibFac  (raw counts per gram)
+  calib_fac: "24.1221"     # 2026-10-09 recalibrated with 1320.7 g reference (factory NVS calibFac was 23.7618)
   calib_off: "434380"      # NVS feniska/calibOff  (factory empty-base raw; original re-tares at boot anyway)
 
 esphome:
@@ -41,6 +41,12 @@ wifi:
     password: !secret feniska_ap_password
 
 captive_portal:
+
+# Local REST/web UI, e.g. tare from a terminal:
+#   curl -X POST -d '' http://feniska-base.local/button/Tare/press   (name-based, case-sensitive)
+web_server:
+  port: 80
+  version: 3
 
 globals:
   - id: zero_offset          # HX711 offset (raw counts). Original keeps it in RAM only.
