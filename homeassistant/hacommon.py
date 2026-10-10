@@ -53,28 +53,41 @@ def rest(cfg, method, path, body=None):
         return json.loads(r.read() or b"null")
 
 
-def find_base_entities(cfg, entity_ids):
-    """Map BASE_ENTITIES suffixes to the base's real entity ids.
+def find_bases(cfg, entity_ids):
+    """Find all Feniska bases in HA. Returns [{"name": device name, "entities": {suffix: entity_id}}], sorted by name.
 
     HA prefixes entity ids with device and sometimes area names (e.g. sensor.living_room_feniska_base_uptime),
-    and other devices use the same suffixes (e.g. a router's ..._uptime). So: find the base by its
-    visit counter, ask HA for all entities of that device, and match suffixes only within those."""
-    hint = slug(cfg["base_device"]) if cfg.get("base_device") else ""
-    anchors = sorted(e for e in entity_ids if e.startswith("sensor.") and e.endswith("_visits_since_boot") and hint in e)
+    and other devices use the same suffixes (e.g. a router's ..._uptime). So: find each base by its
+    visit counter, ask HA for all entities of that device, and match suffixes only within those.
+
+    Optional config: base_devices = ["Name", ...] limits the bases to these device names (exact, case-insensitive);
+    the older base_device = "part of a name" still works and keeps the bases whose visit counter contains it."""
+    anchors = sorted(e for e in entity_ids if e.startswith("sensor.") and e.endswith("_visits_since_boot"))
+    if cfg.get("base_device"):
+        anchors = [e for e in anchors if slug(cfg["base_device"]) in e]
     if not anchors:
         raise SystemExit("No Feniska base found in HA (no sensor.*_visits_since_boot) - is the base adopted?")
-    if len(anchors) > 1:
-        raise SystemExit(f"Several bases found: {anchors} - set base_device in the config")
-    device_entities = json.loads(rest_text(cfg, "/api/template", {
-        "template": "{{ device_entities(device_id('" + anchors[0] + "')) | tojson }}"}))
-    found = {}
-    for suffix, domain in BASE_ENTITIES.items():
-        hits = [e for e in device_entities if e.startswith(domain + ".") and e.endswith("_" + suffix)]
-        if hits:
-            found[suffix] = sorted(hits)[0]
-    if "last_visit_weight" not in found:
-        raise SystemExit("Base found, but it has no last_visit_weight sensor - flash the current ESPHome config")
-    return found
+    tpl = "[" + ",".join(
+        "{'anchor': '" + a + "', 'name': device_attr(device_id('" + a + "'), 'name_by_user') or "
+        "device_attr(device_id('" + a + "'), 'name'), 'entities': device_entities(device_id('" + a + "'))}"
+        for a in anchors) + "]"
+    devices = json.loads(rest_text(cfg, "/api/template", {"template": "{{ " + tpl + " | tojson }}"}))
+    if cfg.get("base_devices"):
+        wanted = {n.lower() for n in cfg["base_devices"]}
+        devices = [d for d in devices if (d["name"] or "").lower() in wanted]
+        if not devices:
+            raise SystemExit(f"None of base_devices {cfg['base_devices']} found in HA")
+    bases = []
+    for d in devices:
+        found = {}
+        for suffix, domain in BASE_ENTITIES.items():
+            hits = [e for e in d["entities"] if e.startswith(domain + ".") and e.endswith("_" + suffix)]
+            if hits:
+                found[suffix] = sorted(hits)[0]
+        if "last_visit_weight" not in found:
+            raise SystemExit(f"Base '{d['name']}' has no last_visit_weight sensor - flash the current ESPHome config")
+        bases.append({"name": d["name"] or d["anchor"], "entities": found})
+    return sorted(bases, key=lambda b: b["name"])
 
 
 def rest_text(cfg, path, body):

@@ -1,4 +1,4 @@
-"""Set up cat identification and a 'Cats' dashboard in Home Assistant for a Feniska base running ESPHome.
+"""Set up cat identification and a 'Cats' dashboard in Home Assistant for one or more Feniska bases running ESPHome.
 
 Creates (via the HA API, no YAML files needed):
   - per cat: input_number <cat>_reference_weight, input_number <cat>_last_weight,
@@ -19,7 +19,7 @@ import sys
 
 import websockets
 
-from hacommon import load_config, rest, find_base_entities
+from hacommon import load_config, rest, find_bases
 
 
 class WS:
@@ -62,11 +62,15 @@ def ensure_template_sensor(cfg, existing, entity_id, name, state):
     print(f"  create {entity_id}")
 
 
-def visit_automation(cfg, base):
+def visit_automation(cfg, bases):
     cats_jinja = "[" + ", ".join(
         f"['{c['name']}', 'input_number.{c['slug']}_reference_weight']" for c in cfg["cats"]) + "]"
+    # One trigger per base; the visit weight (and box name) come from whichever base fired.
+    weight_of = "{" + ", ".join(
+        f"'{b['entities']['visits_since_boot']}': '{b['entities']['last_visit_weight']}'" for b in bases) + "}"
+    box_of = "{" + ", ".join(
+        f"'{b['entities']['visits_since_boot']}': '{b['name']}'" for b in bases) + "}"
     cat_tpl = (
-        "{% set w = states('" + base["last_visit_weight"] + "') | float(0) %}"
         "{% set ns = namespace(best='Unknown', d=999) %}"
         "{% for n, e in " + cats_jinja + " %}"
         "{% set d = (w - states(e) | float(0)) | abs %}"
@@ -94,13 +98,22 @@ def visit_automation(cfg, base):
         "description": "Assigns each Feniska litter box visit to the cat with the nearest reference weight; "
                        "reference weights learn slowly from confident matches.",
         "mode": "queued",
-        "triggers": [{"trigger": "state", "entity_id": base["visits_since_boot"]}],
+        "triggers": [{"trigger": "state", "entity_id": [b["entities"]["visits_since_boot"] for b in bases]}],
+        # Only a rising visit counter is a visit. A counter reappearing after an HA restart or a Wi-Fi drop
+        # (unavailable -> 2) must not count. After a base reboot the counter has no value ('unknown') until
+        # the first visit, so unknown -> 1 is a real visit.
         "conditions": [{"condition": "template",
-                        "value_template": "{{ trigger.to_state.state not in ['unknown', 'unavailable', ''] }}"}],
+                        "value_template": "{{ trigger.from_state is not none "
+                                          "and trigger.from_state.state not in ['unavailable', ''] "
+                                          "and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}"}],
         "actions": [
-            {"variables": {"w": "{{ states('" + base["last_visit_weight"] + "') | float(0) }}", "cat": cat_tpl}},
+            {"variables": {"w": "{{ states(" + weight_of + "[trigger.entity_id]) | float(0) }}",
+                           "box": "{{ " + box_of + "[trigger.entity_id] }}"}},
+            {"variables": {"cat": cat_tpl}},
             {"action": "input_select.select_option", "target": {"entity_id": "input_select.litter_box_last_cat"},
              "data": {"option": "{{ cat }}"}},
+            *([{"action": "input_select.select_option", "target": {"entity_id": "input_select.litter_box_last_box"},
+                "data": {"option": "{{ box }}"}}] if len(bases) > 1 else []),
             {"choose": per_cat,
              "default": [{"action": "counter.increment", "target": {"entity_id": "counter.unknown_litter_visits_today"}}]},
         ],
@@ -116,25 +129,44 @@ def reset_automation(cfg):
     }
 
 
-def dashboard(cfg, base):
+def dashboard(cfg, bases):
     cats = cfg["cats"]
+    multi = len(bases) > 1
 
-    def row(suffix, name):
-        return [{"entity": base[suffix], "name": name}] if suffix in base else []
+    def row(base, suffix, name):
+        return [{"entity": base["entities"][suffix], "name": name}] if suffix in base["entities"] else []
+
+    def last_visit_rows(base):
+        return [*row(base, "last_visit_time", "Time"), *row(base, "last_visit_weight", "Weight"),
+                *row(base, "last_visit_duration", "Duration"), *row(base, "last_visit_residue", "Left behind")]
+
+    def base_rows(base):
+        return [*row(base, "tare", "Tare (litter box on, no cat)"), *row(base, "weight_live", "Live weight"),
+                *row(base, "uptime", "Base uptime"), *row(base, "wifi_signal", "Wi-Fi"),
+                *row(base, "display_backlight", "Display backlight")]
 
     tiles = ([{"type": "tile", "entity": f"sensor.{c['slug']}_weight", "name": c["name"], "icon": "mdi:cat"} for c in cats]
              + [{"type": "tile", "entity": f"counter.{c['slug']}_visits_today", "name": f"{c['name']} visits today",
                  "icon": "mdi:emoticon-poop"} for c in cats])
+    last_visit = {"type": "entities", "title": "Last visit", "entities": [
+        {"entity": "input_select.litter_box_last_cat", "name": "Cat"},
+        *([{"entity": "input_select.litter_box_last_box", "name": "Litter box"}] if multi else last_visit_rows(bases[0])),
+        {"entity": "counter.unknown_litter_visits_today", "name": "Unknown visits today"},
+    ]}
+    per_base_visits = [{"type": "entities", "title": f"{b['name']}: last visit", "entities": last_visit_rows(b)}
+                       for b in bases] if multi else []
+    live = [{"entity": b["entities"]["weight_live"], "name": b["name"] if multi else "Live weight"}
+            for b in bases if "weight_live" in b["entities"]]
+    refs = [{"entity": f"input_number.{c['slug']}_reference_weight", "name": f"{c['name']} reference"} for c in cats]
+    controls = ([{"type": "entities", "title": "Calibration & base", "entities": refs + base_rows(bases[0])}] if not multi
+                else [{"type": "entities", "title": "Calibration", "entities": refs}]
+                + [{"type": "entities", "title": f"{b['name']}: base", "entities": base_rows(b)} for b in bases])
     return {"title": cfg["dashboard_title"], "views": [{
         "title": cfg["dashboard_title"], "path": "cats", "icon": "mdi:cat",
         "cards": [
             {"type": "grid", "columns": min(len(cats), 3) if len(cats) > 1 else 2, "square": False, "cards": tiles},
-            {"type": "entities", "title": "Last visit", "entities": [
-                {"entity": "input_select.litter_box_last_cat", "name": "Cat"},
-                *row("last_visit_time", "Time"), *row("last_visit_weight", "Weight"),
-                *row("last_visit_duration", "Duration"), *row("last_visit_residue", "Left behind"),
-                {"entity": "counter.unknown_litter_visits_today", "name": "Unknown visits today"},
-            ]},
+            last_visit,
+            *per_base_visits,
             {"type": "statistics-graph", "title": "Weight trend", "chart_type": "line", "period": "day",
              "days_to_show": 30, "stat_types": ["mean"],
              "entities": [{"entity": f"sensor.{c['slug']}_weight", "name": c["name"]} for c in cats]},
@@ -142,25 +174,22 @@ def dashboard(cfg, base):
              "entities": [{"entity": f"counter.{c['slug']}_visits_today", "name": c["name"]} for c in cats]
                          + [{"entity": "counter.unknown_litter_visits_today", "name": "Unknown"}]},
             *([{"type": "history-graph", "title": "Litter box weight (24 h)", "hours_to_show": 24,
-                "entities": [{"entity": base["weight_live"], "name": "Live weight"}]}] if "weight_live" in base else []),
+                "entities": live}] if live else []),
             {"type": "logbook", "title": "Visit log", "hours_to_show": 48,
-             "target": {"entity_id": ["input_select.litter_box_last_cat"]}},
-            {"type": "entities", "title": "Calibration & base", "entities": [
-                *[{"entity": f"input_number.{c['slug']}_reference_weight", "name": f"{c['name']} reference"} for c in cats],
-                *row("tare", "Tare (litter box on, no cat)"), *row("weight_live", "Live weight"),
-                *row("uptime", "Base uptime"), *row("wifi_signal", "Wi-Fi"),
-                *row("display_backlight", "Display backlight"),
-            ]},
+             "target": {"entity_id": ["input_select.litter_box_last_cat"]
+                                     + (["input_select.litter_box_last_box"] if multi else [])}},
+            *controls,
         ]}]}
 
 
 async def main():
     cfg = load_config(sys.argv[1] if len(sys.argv) > 1 else None)
     existing = states(cfg)
-    base = find_base_entities(cfg, existing)
-    print("Base entities:")
-    for k, v in base.items():
-        print(f"  {k:20} {v}")
+    bases = find_bases(cfg, existing)
+    for b in bases:
+        print(f"Base '{b['name']}':")
+        for k, v in b["entities"].items():
+            print(f"  {k:20} {v}")
 
     host = cfg["ha_url"].split("://", 1)[1]
     scheme = "wss" if cfg["ha_url"].startswith("https") else "ws"
@@ -185,14 +214,18 @@ async def main():
                                 name=f"{c['name']} visits today", icon="mdi:emoticon-poop", step=1, initial=0)
         await ensure_helper(ws, "counter", existing, "counter.unknown_litter_visits_today",
                             name="Unknown litter visits today", icon="mdi:help-circle", step=1, initial=0)
-        options = [c["name"] for c in cfg["cats"]] + ["Unknown"]
-        if not await ensure_helper(ws, "input_select", existing, "input_select.litter_box_last_cat",
-                                   name="Litter box last cat", options=options, icon="mdi:cat"):
-            for item in await ws.call(type="input_select/list"):
-                if item.get("name") == "Litter box last cat" and item.get("options") != options:
-                    await ws.call(type="input_select/update", input_select_id=item["id"],
-                                  name=item["name"], options=options, icon="mdi:cat")
-                    print("  update input_select.litter_box_last_cat options")
+        selects = [("input_select.litter_box_last_cat", "Litter box last cat",
+                    [c["name"] for c in cfg["cats"]] + ["Unknown"], "mdi:cat")]
+        if len(bases) > 1:
+            selects.append(("input_select.litter_box_last_box", "Litter box last box",
+                            [b["name"] for b in bases], "mdi:package-variant"))
+        for entity_id, name, options, icon in selects:
+            if not await ensure_helper(ws, "input_select", existing, entity_id, name=name, options=options, icon=icon):
+                for item in await ws.call(type="input_select/list"):
+                    if item.get("name") == name and item.get("options") != options:
+                        await ws.call(type="input_select/update", input_select_id=item["id"],
+                                      name=name, options=options, icon=icon)
+                        print(f"  update {entity_id} options")
 
         await asyncio.sleep(2)
         for c in new_refs:
@@ -208,7 +241,7 @@ async def main():
                                    "{{ v if v > 0 else none }}")
 
         print("Automations:")
-        for aid, auto in (("feniska_cat_visit", visit_automation(cfg, base)),
+        for aid, auto in (("feniska_cat_visit", visit_automation(cfg, bases)),
                           ("feniska_cat_visits_reset", reset_automation(cfg))):
             rest(cfg, "POST", f"/api/config/automation/config/{aid}", auto)
             print(f"  saved  {aid}")
@@ -219,7 +252,7 @@ async def main():
             await ws.call(type="lovelace/dashboards/create", url_path=url, title=cfg["dashboard_title"],
                           icon="mdi:cat", mode="storage", show_in_sidebar=True, require_admin=False)
             print(f"  create {url}")
-        await ws.call(type="lovelace/config/save", url_path=url, config=dashboard(cfg, base))
+        await ws.call(type="lovelace/config/save", url_path=url, config=dashboard(cfg, bases))
         print(f"  saved  {url}")
 
     final = states(cfg)
@@ -227,7 +260,8 @@ async def main():
     check = [f"input_number.{c['slug']}_reference_weight" for c in cfg["cats"]] + \
             [f"sensor.{c['slug']}_weight" for c in cfg["cats"]] + \
             ["input_select.litter_box_last_cat", "automation.litter_box_identify_cat_and_count_visit",
-             "automation.litter_box_reset_daily_visit_counters"]
+             "automation.litter_box_reset_daily_visit_counters"] + \
+            (["input_select.litter_box_last_box"] if len(bases) > 1 else [])
     for e in check:
         print(f"  {e:55} {final.get(e, {}).get('state', 'MISSING')}")
 

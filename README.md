@@ -148,7 +148,7 @@ On the unit used to develop this, the factory value was 23.76 and recalibration 
    uvx --with websockets python setup_ha.py
    ```
 
-The script finds the base's entities on its own, even when HA adds the area name to the entity IDs. If you have several bases, set `base_device` in the config.
+The script finds the bases' entities on its own, even when HA adds the area name to the entity IDs. **Several bases** work out of the box: the automation listens to every base and takes the weight from the one that saw the visit, `input_select.litter_box_last_box` records which box it was, and the dashboard gets a last-visit and a controls card per base. To use only some of your bases, list their HA device names in `base_devices`.
 
 **Tips**
 - With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.

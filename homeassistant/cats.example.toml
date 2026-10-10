@@ -5,8 +5,8 @@
 ha_url = "http://homeassistant.local:8123"
 token_file = "~/.config/feniska/ha_token"
 
-# Optional: name (or part of the name) of the ESPHome device in HA, if you have more than one base.
-# base_device = "Feniska Base"
+# Optional: all Feniska bases in HA are used by default. To use only some, list their HA device names.
+# base_devices = ["Feniska Base", "Feniska Base 2"]
 
 # Visit assignment: nearest reference weight wins.
 match_kg = 1.5     # a visit farther than this from every cat counts as "Unknown"
