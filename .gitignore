@@ -21,3 +21,6 @@ re/app0.elf
 homeassistant/*.local.*
 
 __pycache__/
+
+# Personal assets (e.g. boot splash with your cats)
+*.local.*

@@ -155,6 +155,20 @@ The script finds the bases' entities on its own, even when HA adds the area name
 - Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
 - `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
 
+## Boot splash
+
+After a restart the display shows `splash_file` (240×135) for `splash_seconds`, then the normal weight screen. The default is a generic logo. To show your cats instead, crop round portraits from your photos and point your local override at the result. Keep personal photos in `*.local.*` files, which are git-ignored:
+```bash
+cd re
+uvx --with pillow python scripts/make_splash.py assets/splash-cats.local.png \
+    assets/cat-a.local.jpg:CX,CY,R assets/cat-b.local.jpg:CX,CY,R   # circle around each face, in photo pixels
+```
+```yaml
+# re/my-base.local.yaml
+substitutions:
+  splash_file: "assets/splash-cats.local.png"
+```
+
 ## Firmware versions
 
 The config sets `esphome: project: version`, which Home Assistant shows as the device's firmware version (e.g. *1.1.0 (ESPHome 2026.9.1)*). When you change the config and flash it, bump the version and tag the commit `v<version>`, so you can always tell which config a base is running.
@@ -163,6 +177,7 @@ The config sets `esphome: project: version`, which Home Assistant shows as the d
 |---|---|
 | 1.0.0 | First ESPHome release: measuring like the original, display, tare, local web server, on-device visit detection |
 | 1.1.0 | Visit detection: baseline from the lowest reading before the visit (a paw on the box no longer makes the cat read light); a visit ends after `visit_end_samples` (10) instead of 3 samples, so stepping half out doesn't split it; project version shown in HA |
+| 1.2.0 | Boot splash on the display for the first `splash_seconds` (6) after a restart; `splash_file` selects the image |
 
 ## Flashing over Wi-Fi without opening the case
 

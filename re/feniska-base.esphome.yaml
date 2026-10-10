@@ -18,6 +18,10 @@ substitutions:
   # A visit ends after this many samples (~1/s) below visit_min_kg. Long enough that a cat stepping
   # half out and back in stays one visit.
   visit_end_samples: "10"
+  # Boot splash on the display (240x135). Make your own with re/scripts/make_splash.py, e.g. with
+  # your cats' faces, and point splash_file at it from your local override (keep photos *.local.*).
+  splash_file: "assets/splash.png"
+  splash_seconds: "6"
   calib_off: "430000"      # raw reading of the empty base; only a start value, the scale re-tares at boot
 
 esphome:
@@ -27,7 +31,7 @@ esphome:
   # that gets flashed, and tag the commit (v<version>). See README "Firmware versions".
   project:
     name: "bestimmaa.feniska-base"
-    version: "1.1.0"
+    version: "1.2.0"
 
 esp32:
   board: esp32dev          # TTGO T-Display V1.1, ESP32-D0WDQ6-V3
@@ -87,6 +91,12 @@ light:
     restore_mode: RESTORE_DEFAULT_ON   # original: full brightness (255) at boot
     default_transition_length: 0s
 
+image:
+  - file: ${splash_file}
+    id: splash
+    type: RGB565
+    resize: 240x135
+
 font:
   - file: "gfonts://Roboto"
     id: font_big
@@ -109,6 +119,11 @@ display:
     rotation: 90             # original: TFT_eSPI setRotation(1) = landscape 240x135
     update_interval: 1s
     lambda: |-
+      // Boot splash (NOT original): shown for the first splash_seconds after a restart.
+      if (millis() < ${splash_seconds} * 1000UL) {
+        it.image(0, 0, id(splash));
+        return;
+      }
       // Original: weight >= 0.1 kg -> big "x.xx" + "kg"; else idle screen. Values in
       // (-0.05, 0.05) or negative are shown as 0.
       float kg = id(weight_display).state;
