@@ -12,13 +12,22 @@ substitutions:
   # EXAMPLE VALUES - replace with your own base's calibration (see README "Calibration").
   # Each base stores its factory values in NVS (namespace "feniska", keys calibFac / calibOff).
   calib_fac: "24.0"        # raw counts per gram; your base's calibFac or a fresh recalibration (typically ~24)
-  # Visit detection: anything heavier than this counts as a cat (a visit).
+  # Visit detection: anything heavier than this counts as a cat (a visit). If all your cats are
+  # well above it, raise it (e.g. 2.0) so a cat with only its front paws on the rim doesn't count.
   visit_min_kg: "1.0"
+  # A visit ends after this many samples (~1/s) below visit_min_kg. Long enough that a cat stepping
+  # half out and back in stays one visit.
+  visit_end_samples: "10"
   calib_off: "430000"      # raw reading of the empty base; only a start value, the scale re-tares at boot
 
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  # Shown in Home Assistant as the device's firmware version. Bump it with every config change
+  # that gets flashed, and tag the commit (v<version>). See README "Firmware versions".
+  project:
+    name: "bestimmaa.feniska-base"
+    version: "1.1.0"
 
 esp32:
   board: esp32dev          # TTGO T-Display V1.1, ESP32-D0WDQ6-V3
@@ -178,24 +187,30 @@ sensor:
               id(raw_reported).publish_state(id(zero_offset) + kg * 1000.0f * calib_fac);
             }
             // Visit detection (NOT in the original firmware; the cloud did this). A visit
-            // starts after 2 samples above visit_min_kg and ends after 3 samples below it.
-            // The cat's weight is the median of the in-visit samples, which ignores the
-            // spikes of jumping in/out. Residue = weight 20 s after the cat left.
+            // starts after 2 samples above visit_min_kg and ends after visit_end_samples
+            // samples below it (~1 sample/s), so a cat that briefly steps half out and back
+            // in stays one visit instead of being split. The cat's weight is the median of
+            // the in-visit samples, which ignores the spikes of jumping in/out.
+            // Baseline = the LOWEST sample of the ~30 s before the visit: the latest sample
+            // would include a paw already resting on the box and make the cat read light.
+            // Residue = weight 20 s after the visit ended.
             static std::vector<float> samples;
+            static std::vector<float> pre;           // recent out-of-visit samples
             static int above = 0, below = 0;
             static bool in_visit = false;
-            static uint32_t visit_start = 0, residue_due = 0;
-            static float baseline = 0.0f, visit_baseline = 0.0f;
+            static uint32_t visit_start = 0, last_above = 0, residue_due = 0;
+            static float visit_baseline = 0.0f;
             const float min_kg = ${visit_min_kg};
-            if (kg > min_kg) { above++; below = 0; } else { below++; above = 0; }
+            if (kg > min_kg) { above++; below = 0; last_above = now; } else { below++; above = 0; }
             if (!in_visit && above >= 2) {
-              in_visit = true; visit_start = now; visit_baseline = baseline;
-              samples.clear(); residue_due = 0;
+              in_visit = true; visit_start = now; residue_due = 0;
+              visit_baseline = pre.empty() ? 0.0f : *std::min_element(pre.begin(), pre.end());
+              samples.clear();
             }
             if (in_visit && kg > min_kg && samples.size() < 1800) samples.push_back(kg);
-            if (in_visit && below >= 3) {
+            if (in_visit && below >= ${visit_end_samples}) {
               in_visit = false;
-              uint32_t secs = (now - visit_start) / 1000;
+              uint32_t secs = (last_above - visit_start) / 1000;
               if (secs >= 5 && !samples.empty()) {
                 std::vector<float> s = samples;
                 std::sort(s.begin(), s.end());
@@ -213,7 +228,8 @@ sensor:
                 id(last_visit_residue).publish_state(kg - visit_baseline);
                 residue_due = 0;
               }
-              if (above == 0) baseline = kg;   // pre-visit reference
+              pre.push_back(kg);               // pre-visit reference window (~30 samples)
+              if (pre.size() > 30) pre.erase(pre.begin());
             }
 
   - platform: template

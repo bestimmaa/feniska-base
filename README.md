@@ -9,7 +9,7 @@ Revives the **Feniska** smart cat-toilet scale base after the Berlin pet-tech st
 - Tare, restart and backlight controls in Home Assistant and through a local web API
 - The original calibration math, with a simple procedure to recalibrate
 
-- Basic visit detection on the device (the original left this to Feniska's cloud). Anything heavier than `visit_min_kg` (default 1 kg) for at least 5 s counts as a visit. The base reports **Last Visit Weight** (median weight during the visit, i.e. the cat), **Peak**, **Duration**, **Residue** (weight left behind, measured 20 s after the cat leaves), **Last Visit Time** and **Visits Since Boot**. It also reports **Uptime**, so a restart, which re-tares the scale, can be spotted.
+- Basic visit detection on the device (the original left this to Feniska's cloud). Anything heavier than `visit_min_kg` (default 1 kg) for at least 5 s counts as a visit. A visit ends only after `visit_end_samples` (default 10, about 10 s) below the threshold, so a cat stepping half out and back in stays one visit. The weight is measured against the lowest reading of the ~30 s before the visit, so a paw resting on the box before the jump doesn't make the cat read light. If all your cats are well above 1 kg, raise `visit_min_kg` (e.g. to 2.0) in your local override so a cat with only its front paws on the rim doesn't count. The base reports **Last Visit Weight** (median weight during the visit, i.e. the cat), **Peak**, **Duration**, **Residue** (weight left behind, measured 20 s after the cat leaves), **Last Visit Time** and **Visits Since Boot**. It also reports **Uptime**, so a restart, which re-tares the scale, can be spotted.
 
 ```bash
 curl -s http://feniska-base.local/sensor/Last%20Visit%20Weight
@@ -154,6 +154,15 @@ The script finds the bases' entities on its own, even when HA adds the area name
 - With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.
 - Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
 - `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
+
+## Firmware versions
+
+The config sets `esphome: project: version`, which Home Assistant shows as the device's firmware version (e.g. *1.1.0 (ESPHome 2026.9.1)*). When you change the config and flash it, bump the version and tag the commit `v<version>`, so you can always tell which config a base is running.
+
+| Version | Changes |
+|---|---|
+| 1.0.0 | First ESPHome release: measuring like the original, display, tare, local web server, on-device visit detection |
+| 1.1.0 | Visit detection: baseline from the lowest reading before the visit (a paw on the box no longer makes the cat read light); a visit ends after `visit_end_samples` (10) instead of 3 samples, so stepping half out doesn't split it; project version shown in HA |
 
 ## Flashing over Wi-Fi without opening the case
 
