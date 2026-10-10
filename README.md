@@ -154,6 +154,7 @@ The script finds the bases' entities on its own, even when HA adds the area name
 - With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.
 - Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
 - `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
+- `uvx python check.py 24` is a read-only health check: per base the firmware, reboots, the empty reading and every visit of the last 24 h with the cat it best matches; per cat the visit count and weight spread; then a list of anything implausible (no visits for a cat, drifting zero, very long visits, unusual residue, drifted references). Handy as a daily routine for the first days with new bases.
 
 ## Boot splash
 
@@ -163,6 +164,7 @@ cd re
 uvx --with pillow python scripts/make_splash.py assets/splash-cats.local.png \
     assets/cat-a.local.jpg:CX,CY,R assets/cat-b.local.jpg:CX,CY,R   # circle around each face, in photo pixels
 ```
+For artwork instead of photos (e.g. pixel-art portraits), `--cutout` drops the round frame and `--strip-bg` removes a white or baked-in checkerboard background, flood-filled from the top edge so it stops at the outline.
 ```yaml
 # re/my-base.local.yaml
 substitutions:
