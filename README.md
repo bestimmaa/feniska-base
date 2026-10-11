@@ -118,9 +118,27 @@ substitutions:
 
 On the unit used to develop this, the factory value was 23.76 and recalibration gave 24.12, a 1.5 % difference. Readings vary by about 2–3 % depending on where the load sits on the four corner cells. That's fine for telling cats apart.
 
+## How it works
+
+The work is split in two. The base decides *when* a visit happened and what the cat weighed. Home Assistant decides *which cat* it was. Here is what happens when a cat uses the box:
+
+1. **The base weighs continuously.** It reads the scale about once a second and keeps the last ~30 s of quiet readings as a reference.
+2. **A visit starts** when the weight stays above `visit_min_kg` for two readings. The base takes the lowest of the quiet readings as the baseline, so a paw already resting on the edge doesn't make the cat read light.
+3. **During the visit** it collects every reading. Jumping in and out causes spikes, so it doesn't trust any single one.
+4. **The visit ends** once the weight has been below `visit_min_kg` for `visit_end_samples` readings (~10 s). That pause is long enough that a cat stepping half out and back in stays one visit. Anything shorter than 5 s is ignored.
+5. **The base reports the result:** the cat's weight (median of the readings minus the baseline), peak and duration, and it increments `visits_since_boot`. 20 s later it reports the residue, meaning what's left on the scale compared to before the visit.
+6. **Home Assistant picks the cat.** The *identify cat* automation runs on every rise of a base's visit counter. It compares the weight with each cat's reference weight and picks the nearest one, or *Unknown* if none is within `match_kg`.
+7. **Home Assistant keeps learning.** If the match was close (within `learn_kg`), the cat's reference moves a little toward this visit (`learn_rate`), so it follows slow weight changes. Then it updates the cat's last weight, visit counter and the last-cat log. The counters reset at midnight.
+
+What this means in practice:
+- The base knows nothing about cats. Adding a cat or correcting a reference weight happens in Home Assistant (`cats.local.toml`, then re-run `setup_ha.py`) and never needs a reflash.
+- Home Assistant only sees the result of each visit, not the raw readings. Changing how visits are detected or weighed means changing the `substitutions` in the ESPHome YAML and reflashing.
+- `setup_ha.py` generates the automations. Edits made in Home Assistant's automation editor are overwritten the next time it runs.
+- `check.py` and `recent.py` only read Home Assistant's history and change nothing.
+
 ## Home Assistant: cat identification
 
-`homeassistant/setup_ha.py` builds on the base's visit sensors and sets up the rest through the Home Assistant API. It needs no YAML files and no add-ons, just a long-lived access token.
+`homeassistant/setup_ha.py` builds on the base's visit sensors and sets up the rest through the Home Assistant API. It needs no YAML files and no add-ons, just a long-lived access token. See [How it works](#how-it-works) for what happens during a visit.
 
 **What it creates**
 
@@ -154,7 +172,7 @@ The script finds the bases' entities on its own, even when HA adds the area name
 - With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.
 - Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
 - `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
-- `uvx python check.py 24` is a read-only health check: per base the firmware, reboots, the empty reading and every visit of the last 24 h with the cat it best matches; per cat the visit count and weight spread; then a list of anything implausible (no visits for a cat, drifting zero, very long visits, unusual residue, drifted references). Handy as a daily routine for the first days with new bases.
+- `uvx python check.py 24` is a read-only health check: per base the firmware, reboots, the empty reading and every visit of the last 24 h with the cat it best matches; per cat the visit count and weight spread; then a list of anything implausible (no visits for a cat, drifting zero, very long visits, unusual residue, drifted references). Visits you took back by lowering a daily visit counter in HA are skipped. Handy as a daily routine for the first days with new bases.
 
 ## Boot splash
 

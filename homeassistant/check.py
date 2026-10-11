@@ -2,7 +2,8 @@
 
 Reports per base (firmware, uptime/reboots, availability, current empty weight, visits of the last N hours with
 weight, duration and the cat they best match) and per cat (reference, visits, weight spread), then lists
-anything that looks wrong under ISSUES. Read-only: it changes nothing in HA.
+anything that looks wrong under ISSUES. Visits that were reset by hand in HA (a daily visit counter lowered
+outside the midnight reset) are skipped. Read-only: it changes nothing in HA.
 
 Usage:  uvx python check.py [hours]   (default 24)
 """
@@ -42,6 +43,28 @@ def hist(ents, t0=start, t1=now):
     return res
 
 
+def undone(series):
+    """Times of increments of a daily visit counter that were later taken back by hand, i.e. the counter dropped
+    outside the midnight reset (a visit judged wrong and reset). A drop by k undoes the k latest increments."""
+    counted, gone, prev = [], set(), None
+    for ts, s in series or []:
+        n = num(s)
+        if n is None:
+            continue
+        if prev is not None and n > prev:
+            counted.append(ts)
+        elif prev is not None and n < prev:
+            local = ts.astimezone()
+            if local.hour == 0 and local.minute == 0:
+                counted = []
+            else:
+                k = int(prev - n)
+                gone.update(counted[-k:])
+                counted = counted[:-k]
+        prev = n
+    return gone
+
+
 def at(series, t, slack=5):
     v = None
     for ts, s in series or []:
@@ -64,6 +87,9 @@ for a in ("automation.litter_box_identify_cat_and_count_visit", "automation.litt
 
 per_cat = {c["name"]: [] for c in cats}
 unknown = []
+counters = [f"counter.{c['slug']}_visits_today" for c in cats] + ["counter.unknown_litter_visits_today"]
+reset = set().union(*(undone(s) for s in hist(counters).values()))
+was_reset = lambda ts: any(dt.timedelta(seconds=-2) <= r - ts <= dt.timedelta(seconds=10) for r in reset)
 for b in bases:
     e = b["entities"]
     anchor = e["visits_since_boot"]
@@ -92,6 +118,9 @@ for b in bases:
         n, p = num(s), prev
         prev = s
         if p in (None, "unavailable", "") or n is None or n <= (num(p) or 0):
+            continue
+        if was_reset(ts):
+            out(f"   {ts.astimezone():%m-%d %H:%M}  reset in HA, skipped\n")
             continue
         w = num(at(h.get(e["last_visit_weight"]), ts))
         pk = num(at(h.get(e.get("last_visit_peak")), ts))
