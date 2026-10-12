@@ -147,9 +147,10 @@ What this means in practice:
 | `input_number.<cat>_reference_weight` | the cat's expected weight; adjusts itself slowly from confident matches |
 | `input_number.<cat>_last_weight`, `sensor.<cat>_weight` | weight from the cat's last visit; the sensor keeps long-term statistics for weight trends |
 | `counter.<cat>_visits_today`, `counter.unknown_litter_visits_today` | daily visit counts, reset at midnight |
+| `sensor.<cat>_visits`, `sensor.unknown_litter_visits` | mirror the daily counters with long-term statistics, for the visits-per-day bar chart |
 | `input_select.litter_box_last_cat` | which cat used the box last; its history doubles as a visit log |
 | automation *Litter box - identify cat and count visit* | assigns each visit to the cat with the nearest reference weight, or *Unknown* if it's more than `match_kg` away from every cat |
-| dashboard *Cats* | weight and visit tiles per cat, last visit, 30-day weight trend, visit history, litter box weight, calibration and base controls |
+| dashboard *Cats* | weight and visit tiles per cat, last visit, 30-day weight trend, visits per day (bars, 14 days), litter box weight, calibration and base controls |
 
 **Setup**
 

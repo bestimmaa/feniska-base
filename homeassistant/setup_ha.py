@@ -2,11 +2,11 @@
 
 Creates (via the HA API, no YAML files needed):
   - per cat: input_number <cat>_reference_weight, input_number <cat>_last_weight,
-    counter <cat>_visits_today, template sensor <cat>_weight (long-term statistics)
-  - counter unknown_litter_visits_today, input_select litter_box_last_cat
+    counter <cat>_visits_today, template sensors <cat>_weight and <cat>_visits (long-term statistics)
+  - counter unknown_litter_visits_today, template sensor unknown_litter_visits, input_select litter_box_last_cat
   - automation "Litter box - identify cat and count visit" (nearest reference weight wins,
     references learn slowly from confident matches) and a midnight counter reset
-  - a storage-mode dashboard with tiles, last visit, weight trend, visit history and base controls
+  - a storage-mode dashboard with tiles, last visit, weight trend, visits-per-day bars and base controls
 
 Idempotent: existing helpers and sensors are kept (reference weights are not touched),
 automations and the dashboard are overwritten.
@@ -50,16 +50,20 @@ async def ensure_helper(ws, kind, existing, entity_id, **params):
     return True
 
 
-def ensure_template_sensor(cfg, existing, entity_id, name, state):
+def ensure_template_sensor(cfg, existing, entity_id, name, state, **options):
     if entity_id in existing:
         print(f"  keep   {entity_id}")
         return
     flow = rest(cfg, "POST", "/api/config/config_entries/flow", {"handler": "template", "show_advanced_options": False})
     flow = rest(cfg, "POST", f"/api/config/config_entries/flow/{flow['flow_id']}", {"next_step_id": "sensor"})
-    rest(cfg, "POST", f"/api/config/config_entries/flow/{flow['flow_id']}", {
-        "name": name, "state": state, "unit_of_measurement": "kg",
-        "device_class": "weight", "state_class": "measurement"})
+    rest(cfg, "POST", f"/api/config/config_entries/flow/{flow['flow_id']}", {"name": name, "state": state, **options})
     print(f"  create {entity_id}")
+
+
+def visits_state(counter):
+    # Mirrors a daily visit counter for long-term statistics (total_increasing: the midnight reset starts a new
+    # cycle). No value while the counter is unavailable, so a restart doesn't read as a reset plus new visits.
+    return "{{ states('" + counter + "') | int if is_number(states('" + counter + "')) else none }}"
 
 
 def visit_automation(cfg, bases):
@@ -170,9 +174,10 @@ def dashboard(cfg, bases):
             {"type": "statistics-graph", "title": "Weight trend", "chart_type": "line", "period": "day",
              "days_to_show": 30, "stat_types": ["mean"],
              "entities": [{"entity": f"sensor.{c['slug']}_weight", "name": c["name"]} for c in cats]},
-            {"type": "history-graph", "title": "Visits (daily counters)", "hours_to_show": 168,
-             "entities": [{"entity": f"counter.{c['slug']}_visits_today", "name": c["name"]} for c in cats]
-                         + [{"entity": "counter.unknown_litter_visits_today", "name": "Unknown"}]},
+            {"type": "statistics-graph", "title": "Visits per day", "chart_type": "bar", "period": "day",
+             "days_to_show": 14, "stat_types": ["change"],
+             "entities": [{"entity": f"sensor.{c['slug']}_visits", "name": c["name"]} for c in cats]
+                         + [{"entity": "sensor.unknown_litter_visits", "name": "Unknown"}]},
             *([{"type": "history-graph", "title": "Litter box weight (24 h)", "hours_to_show": 24,
                 "entities": live}] if live else []),
             {"type": "logbook", "title": "Visit log", "hours_to_show": 48,
@@ -233,12 +238,16 @@ async def main():
                  {"entity_id": f"input_number.{c['slug']}_reference_weight", "value": c["weight"]})
             print(f"  set    input_number.{c['slug']}_reference_weight = {c['weight']} kg")
 
-        print("Template sensors (long-term weight statistics):")
+        print("Template sensors (long-term statistics for weight and daily visits):")
         existing = states(cfg)
         for c in cfg["cats"]:
             ensure_template_sensor(cfg, existing, f"sensor.{c['slug']}_weight", f"{c['name']} weight",
                                    "{% set v = states('input_number." + c["slug"] + "_last_weight') | float(0) %}"
-                                   "{{ v if v > 0 else none }}")
+                                   "{{ v if v > 0 else none }}",
+                                   unit_of_measurement="kg", device_class="weight", state_class="measurement")
+        for slug, name in [(c["slug"], c["name"]) for c in cfg["cats"]] + [("unknown_litter", "Unknown litter")]:
+            ensure_template_sensor(cfg, existing, f"sensor.{slug}_visits", f"{name} visits",
+                                   visits_state(f"counter.{slug}_visits_today"), state_class="total_increasing")
 
         print("Automations:")
         for aid, auto in (("feniska_cat_visit", visit_automation(cfg, bases)),
@@ -259,6 +268,7 @@ async def main():
     print("Check:")
     check = [f"input_number.{c['slug']}_reference_weight" for c in cfg["cats"]] + \
             [f"sensor.{c['slug']}_weight" for c in cfg["cats"]] + \
+            [f"sensor.{c['slug']}_visits" for c in cfg["cats"]] + ["sensor.unknown_litter_visits"] + \
             ["input_select.litter_box_last_cat", "automation.litter_box_identify_cat_and_count_visit",
              "automation.litter_box_reset_daily_visit_counters"] + \
             (["input_select.litter_box_last_box"] if len(bases) > 1 else [])
