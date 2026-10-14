@@ -118,6 +118,27 @@ substitutions:
 
 On the unit used to develop this, the factory value was 23.76 and recalibration gave 24.12, a 1.5 % difference. Readings vary by about 2–3 % depending on where the load sits on the four corner cells. That's fine for telling cats apart.
 
+A recalibration that lands far from the factory value (more than a few percent) usually means a mechanical problem, not a different cell. Check the base as described below before you trust the new value.
+
+### Checking a base (placement test)
+
+Run this test if a cat reads lighter on one base than on another, or if the same cat comes out at very different weights.
+
+1. Connect USB and log the raw values: `uvx esphome logs re/my-base.local.yaml --device /dev/cu.usbserial-XXXX` (about 5 readings per second). Let the HX711 warm up for a few minutes, because it drifts slightly at first.
+2. Weigh a reference object on a kitchen scale; anything from about 0.5 kg up works.
+3. With the bare base on a hard, flat surface, place the object in the centre and then **directly over each foot**, about 10 s each. **Lift it off for about 5 s between placements**, so each placement is compared with the empty reading right before it.
+4. For each placement, work out `(raw_loaded − raw_empty) / grams`. A healthy base gives the same counts/g everywhere within about ±3 %, with no creep while the weight sits still, and returns to the same empty reading afterwards.
+
+The four half-bridge load cells are wired together into **one** bridge on the HX711 board: each cell's middle wire goes to one of E+, E−, A+ or A−, and the outer wires are spliced to the neighbouring cells. So you can't read a single cell from software or with a voltmeter. A weight placed directly over one foot loads almost only that cell, which is why the test places it there.
+
+| Symptom | Likely cause |
+|---|---|
+| One corner reads low and the diagonally opposite corner reads high, often with creep or an offset after unloading | Something carries load past the cells, e.g. a **warped bottom plate** pressed against the frame, or a plate clamped by its screws. The screws are shoulder screws that hold the plate with some play; a warped or thicker plate gets clamped by their heads. |
+| The empty reading creeps steadily | A rubber foot came off or sits off-centre on its cell, or a cell is loose in its recess. |
+| All positions agree but the counts/g are far from the factory value | Unlikely with intact cells; look for the causes above first. |
+
+To test the cells without the bottom plate, turn the base upside down, lay the plate (or any flat board) on the four upturned feet so that it touches nothing else, and repeat the test on top of it. If the positions agree there but not when the base is assembled, the bottom plate or its screws are the cause. A warped bottom plate can be replaced with a flat, stiff plate, e.g. 3–4 mm aluminium composite (Dibond) or aluminium sheet. Cut it slightly smaller than the opening, no thicker than the original (so the shoulder screws can't clamp it), with holes about 1 mm larger than the screw shoulders, and if you can, put the plate's own feet directly under the load-cell feet so it carries no bending load.
+
 ## How it works
 
 The work is split in two. The base decides *when* a visit happened and what the cat weighed. Home Assistant decides *which cat* it was. Here is what happens when a cat uses the box:
