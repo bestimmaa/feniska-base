@@ -171,7 +171,9 @@ What this means in practice:
 | `sensor.<cat>_visits`, `sensor.unknown_litter_visits` | mirror the daily counters with long-term statistics, for the visits-per-day bar chart |
 | `input_select.litter_box_last_cat` | which cat used the box last; its history doubles as a visit log |
 | automation *Litter box - identify cat and count visit* | assigns each visit to the cat with the nearest reference weight, or *Unknown* if it's more than `match_kg` away from every cat |
-| dashboard *Cats* | weight and visit tiles per cat, last visit, 30-day weight trend, visits per day (bars, 14 days), litter box weight, calibration and base controls |
+| `input_text.litter_box_left_behind_top`, `input_number.<cat>_best_left_behind` | the "left behind" leaderboard: the biggest residues after a visit (top `leaderboard_size`, default 10) and each cat's personal best in grams |
+| automation *Litter box - left behind leaderboard* | updates the leaderboard from each base's residue, 20 s after a visit. The cat comes from that base's own visit weight. Residues outside `residue_min_g`–`residue_max_g` (default 5–500 g) are ignored: negative ones are litter kicked out, very large ones are cleaning or a cat still on the rim |
+| dashboard *Cats* | weight and visit tiles per cat, last visit, 30-day weight trend, visits per day (bars, 14 days), the left-behind leaderboard, litter box weight, calibration and base controls |
 
 **Setup**
 
@@ -193,6 +195,7 @@ The script finds the bases' entities on its own, even when HA adds the area name
 **Tips**
 - With cats less than about 1 kg apart, identification by weight gets unreliable. Tighten `match_kg`, and check the reference weights on the dashboard now and then.
 - Set reference weights directly with `uvx python set_weights.py "Cat A=3.2" "Cat B=4.5"`.
+- `uvx python left_behind.py 30` lists the biggest residues of the last 30 days from HA history; add `--write` to seed the leaderboard with them (it merges, and personal bests only go up).
 - `uvx python recent.py 30` shows live-weight spikes and the last visit, which is useful when a cat was too quick to count (visits need ≥ 5 s above `visit_min_kg`).
 - `uvx python check.py 24` is a read-only health check: per base the firmware, reboots, the empty reading and every visit of the last 24 h with the cat it best matches; per cat the visit count and weight spread; then a list of anything implausible (no visits for a cat, drifting zero, very long visits, unusual residue, drifted references). Visits you took back by lowering a daily visit counter in HA are skipped. Handy as a daily routine for the first days with new bases.
 

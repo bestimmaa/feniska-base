@@ -6,7 +6,9 @@ Creates (via the HA API, no YAML files needed):
   - counter unknown_litter_visits_today, template sensor unknown_litter_visits, input_select litter_box_last_cat
   - automation "Litter box - identify cat and count visit" (nearest reference weight wins,
     references learn slowly from confident matches) and a midnight counter reset
-  - a storage-mode dashboard with tiles, last visit, weight trend, visits-per-day bars and base controls
+  - "left behind" leaderboard: input_text litter_box_left_behind_top (top entries as "cat|grams|yymmddHHMM;..."),
+    input_number <cat>_best_left_behind (grams) and an automation that updates both from each base's residue
+  - a storage-mode dashboard with tiles, last visit, weight trend, visits-per-day bars, the leaderboard and base controls
 
 Idempotent: existing helpers and sensors are kept (reference weights are not touched),
 automations and the dashboard are overwritten.
@@ -66,21 +68,31 @@ def visits_state(counter):
     return "{{ states('" + counter + "') | int if is_number(states('" + counter + "')) else none }}"
 
 
-def visit_automation(cfg, bases):
+def cat_template(cfg):
+    """Jinja that picks the cat whose reference weight is nearest to the variable w (or 'Unknown')."""
     cats_jinja = "[" + ", ".join(
         f"['{c['name']}', 'input_number.{c['slug']}_reference_weight']" for c in cfg["cats"]) + "]"
-    # One trigger per base; the visit weight (and box name) come from whichever base fired.
-    weight_of = "{" + ", ".join(
-        f"'{b['entities']['visits_since_boot']}': '{b['entities']['last_visit_weight']}'" for b in bases) + "}"
-    box_of = "{" + ", ".join(
-        f"'{b['entities']['visits_since_boot']}': '{b['name']}'" for b in bases) + "}"
-    cat_tpl = (
+    return (
         "{% set ns = namespace(best='Unknown', d=999) %}"
         "{% for n, e in " + cats_jinja + " %}"
         "{% set d = (w - states(e) | float(0)) | abs %}"
         "{% if d < ns.d %}{% set ns.d = d %}{% set ns.best = n %}{% endif %}"
         "{% endfor %}"
         "{{ ns.best if ns.d <= " + str(cfg["match_kg"]) + " else 'Unknown' }}")
+
+
+# Only a value that changed from a real value (or from 'unknown' after a base reboot) is new; a sensor coming back
+# after an HA restart or a Wi-Fi drop (unavailable -> x) is not.
+FRESH = "trigger.from_state is not none and trigger.from_state.state not in ['unavailable', '']"
+
+
+def visit_automation(cfg, bases):
+    # One trigger per base; the visit weight (and box name) come from whichever base fired.
+    weight_of = "{" + ", ".join(
+        f"'{b['entities']['visits_since_boot']}': '{b['entities']['last_visit_weight']}'" for b in bases) + "}"
+    box_of = "{" + ", ".join(
+        f"'{b['entities']['visits_since_boot']}': '{b['name']}'" for b in bases) + "}"
+    cat_tpl = cat_template(cfg)
     rate = cfg["learn_rate"]
     per_cat = []
     for c in cfg["cats"]:
@@ -107,8 +119,7 @@ def visit_automation(cfg, bases):
         # (unavailable -> 2) must not count. After a base reboot the counter has no value ('unknown') until
         # the first visit, so unknown -> 1 is a real visit.
         "conditions": [{"condition": "template",
-                        "value_template": "{{ trigger.from_state is not none "
-                                          "and trigger.from_state.state not in ['unavailable', ''] "
+                        "value_template": "{{ " + FRESH + " "
                                           "and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}"}],
         "actions": [
             {"variables": {"w": "{{ states(" + weight_of + "[trigger.entity_id]) | float(0) }}",
@@ -122,6 +133,71 @@ def visit_automation(cfg, bases):
              "default": [{"action": "counter.increment", "target": {"entity_id": "counter.unknown_litter_visits_today"}}]},
         ],
     }
+
+
+LEADERBOARD = "input_text.litter_box_left_behind_top"
+
+
+def left_behind_automation(cfg, bases):
+    """Leaderboard of the biggest residues ('left behind'). Each base reports its residue 20 s after a visit; the
+    cat is taken from that base's own visit weight, so two boxes used at the same time can't mix up."""
+    with_residue = [b for b in bases if "last_visit_residue" in b["entities"]]
+    weight_of = "{" + ", ".join(
+        f"'{b['entities']['last_visit_residue']}': '{b['entities']['last_visit_weight']}'" for b in with_residue) + "}"
+    size = cfg["leaderboard_size"]
+    # Entries "cat|grams|yymmddHHMM" joined by ';', biggest first, at most `size` and 255 characters (input_text max).
+    new_top = (
+        "{% set ns = namespace(items=[], out='') %}"
+        "{% for e in (states('" + LEADERBOARD + "') ~ ';' ~ cat ~ '|' ~ g ~ '|' ~ now().strftime('%y%m%d%H%M'))"
+        ".split(';') if e.count('|') == 2 %}"
+        "{% set ns.items = ns.items + [[e.split('|')[1] | int(0), e]] %}"
+        "{% endfor %}"
+        "{% for p in (ns.items | sort(attribute='0', reverse=true))[:" + str(size) + "] %}"
+        "{% set c = (ns.out ~ ';' ~ p[1]) if ns.out else p[1] %}"
+        "{% if c | length <= 255 %}{% set ns.out = c %}{% endif %}"
+        "{% endfor %}{{ ns.out }}")
+    per_cat = [{
+        "conditions": [{"condition": "template",
+                        "value_template": "{{ cat == '" + c["name"] + "' and g > states('input_number."
+                                          + c["slug"] + "_best_left_behind') | int(0) }}"}],
+        "sequence": [{"action": "input_number.set_value",
+                      "target": {"entity_id": f"input_number.{c['slug']}_best_left_behind"}, "data": {"value": "{{ g }}"}}],
+    } for c in cfg["cats"]]
+    return {
+        "alias": "Litter box - left behind leaderboard",
+        "description": "Keeps the biggest residues after a visit (top list and a personal best per cat). Negative or "
+                       "implausibly large residues (litter kicked out, cleaning, a cat still on the rim) are ignored.",
+        "mode": "queued",
+        "triggers": [{"trigger": "state", "entity_id": [b["entities"]["last_visit_residue"] for b in with_residue]}],
+        "conditions": [{"condition": "template",
+                        "value_template": "{{ " + FRESH + " and is_number(trigger.to_state.state) }}"}],
+        "actions": [
+            {"variables": {"g": "{{ (trigger.to_state.state | float(0) * 1000) | round(0) | int }}",
+                           "w": "{{ states(" + weight_of + "[trigger.entity_id]) | float(0) }}"}},
+            {"condition": "template", "value_template": "{{ " + str(cfg["residue_min_g"]) + " <= g <= "
+                                                         + str(cfg["residue_max_g"]) + " }}"},
+            {"variables": {"cat": cat_template(cfg)}},
+            {"action": "input_text.set_value", "target": {"entity_id": LEADERBOARD}, "data": {"value": new_top}},
+            {"choose": per_cat},
+        ],
+    }
+
+
+def leaderboard_markdown(cfg):
+    bests = " · ".join(
+        f"{c['name']} {{{{ states('input_number.{c['slug']}_best_left_behind') | int(0) }}}} g" for c in cfg["cats"])
+    return (
+        "{% set ns = namespace(rows=[]) %}"
+        "{% for e in states('" + LEADERBOARD + "').split(';') if e.count('|') == 2 %}"
+        "{% set ns.rows = ns.rows + [e.split('|')] %}{% endfor %}"
+        "{% if ns.rows %}"
+        "| | Cat | Left behind | When |\n|:-:|---|--:|---|\n"
+        "{% for p in ns.rows %}{% set t = strptime(p[2], '%y%m%d%H%M', none) %}"
+        "| {{ ['🥇', '🥈', '🥉'][loop.index0] if loop.index0 < 3 else loop.index ~ '.' }} | {{ p[0] }} | {{ p[1] }} g "
+        "| {{ t.strftime('%Y-%m-%d %H:%M') if t else p[2] }} |\n"
+        "{% endfor %}"
+        "{% else %}No records yet.{% endif %}"
+        "\n\n**Personal bests:** " + bests)
 
 
 def reset_automation(cfg):
@@ -178,6 +254,7 @@ def dashboard(cfg, bases):
              "days_to_show": 14, "stat_types": ["change"],
              "entities": [{"entity": f"sensor.{c['slug']}_visits", "name": c["name"]} for c in cats]
                          + [{"entity": "sensor.unknown_litter_visits", "name": "Unknown"}]},
+            {"type": "markdown", "title": "💩 Left behind: leaderboard", "content": leaderboard_markdown(cfg)},
             *([{"type": "history-graph", "title": "Litter box weight (24 h)", "hours_to_show": 24,
                 "entities": live}] if live else []),
             {"type": "logbook", "title": "Visit log", "hours_to_show": 48,
@@ -217,6 +294,11 @@ async def main():
                                 mode="box", unit_of_measurement="kg", icon="mdi:cat")
             await ensure_helper(ws, "counter", existing, f"counter.{c['slug']}_visits_today",
                                 name=f"{c['name']} visits today", icon="mdi:emoticon-poop", step=1, initial=0)
+            await ensure_helper(ws, "input_number", existing, f"input_number.{c['slug']}_best_left_behind",
+                                name=f"{c['name']} best left behind", min=0, max=2000, step=1,
+                                mode="box", unit_of_measurement="g", icon="mdi:emoticon-poop")
+        await ensure_helper(ws, "input_text", existing, LEADERBOARD, name="Litter box left behind top",
+                            min=0, max=255, icon="mdi:trophy")
         await ensure_helper(ws, "counter", existing, "counter.unknown_litter_visits_today",
                             name="Unknown litter visits today", icon="mdi:help-circle", step=1, initial=0)
         selects = [("input_select.litter_box_last_cat", "Litter box last cat",
@@ -251,7 +333,8 @@ async def main():
 
         print("Automations:")
         for aid, auto in (("feniska_cat_visit", visit_automation(cfg, bases)),
-                          ("feniska_cat_visits_reset", reset_automation(cfg))):
+                          ("feniska_cat_visits_reset", reset_automation(cfg)),
+                          ("feniska_left_behind", left_behind_automation(cfg, bases))):
             rest(cfg, "POST", f"/api/config/automation/config/{aid}", auto)
             print(f"  saved  {aid}")
 
@@ -269,8 +352,9 @@ async def main():
     check = [f"input_number.{c['slug']}_reference_weight" for c in cfg["cats"]] + \
             [f"sensor.{c['slug']}_weight" for c in cfg["cats"]] + \
             [f"sensor.{c['slug']}_visits" for c in cfg["cats"]] + ["sensor.unknown_litter_visits"] + \
+            [f"input_number.{c['slug']}_best_left_behind" for c in cfg["cats"]] + [LEADERBOARD] + \
             ["input_select.litter_box_last_cat", "automation.litter_box_identify_cat_and_count_visit",
-             "automation.litter_box_reset_daily_visit_counters"] + \
+             "automation.litter_box_reset_daily_visit_counters", "automation.litter_box_left_behind_leaderboard"] + \
             (["input_select.litter_box_last_box"] if len(bases) > 1 else [])
     for e in check:
         print(f"  {e:55} {final.get(e, {}).get('state', 'MISSING')}")

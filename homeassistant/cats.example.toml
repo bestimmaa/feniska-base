@@ -13,6 +13,11 @@ match_kg = 1.5     # a visit farther than this from every cat counts as "Unknown
 learn_kg = 0.5     # only learn a reference weight from visits closer than this
 learn_rate = 0.2   # how far one confident visit moves the reference (0..1)
 
+# "Left behind" leaderboard (residue after a visit, in grams)
+residue_min_g = 5        # ignore noise below this
+residue_max_g = 500      # ignore implausibly large residues (cleaning, a cat still on the rim)
+leaderboard_size = 10
+
 # Dashboard
 dashboard_url = "dashboard-cats"
 dashboard_title = "Cats"

@@ -31,6 +31,9 @@ def load_config(path=None):
     cfg.setdefault("match_kg", 1.5)
     cfg.setdefault("learn_kg", 0.5)
     cfg.setdefault("learn_rate", 0.2)
+    cfg.setdefault("residue_min_g", 5)      # "left behind" leaderboard: ignore noise below this
+    cfg.setdefault("residue_max_g", 500)    # ...and implausibly large residues (cleaning, a cat still on the rim)
+    cfg.setdefault("leaderboard_size", 10)
     cfg.setdefault("dashboard_url", "dashboard-cats")
     cfg.setdefault("dashboard_title", "Cats")
     cfg["ha_url"] = cfg["ha_url"].rstrip("/")
